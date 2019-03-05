@@ -44,9 +44,9 @@ class MNIST(Dataset):
 
         # trainingがTrueの場合、訓練用のデータのロードする。
         if training:
-            paths = ["../datasets/mnist/train-images-idx3-ubyte.gz", "../datasets/train-labels-idx1-ubyte.gz"]
+            paths = ["../datasets/mnist/train-images-idx3-ubyte.gz", "../datasets/mnist/train-labels-idx1-ubyte.gz"]
         else:
-            paths = ["../datasets/t10k-images-idx3-ubyte.gz", "../datasets/t10k-labels-idx1-ubyte.gz"]
+            paths = ["../datasets/mnist/t10k-images-idx3-ubyte.gz", "../datasets/mnist/t10k-labels-idx1-ubyte.gz"]
 
         self._x = _load_mnist_images(paths[0]).astype(np.float64)
         self._y = _load_mnist_labels(paths[1])

@@ -576,7 +576,7 @@ class Rep(Op):
         super().__init__(x)
         # ! argsは(axis, times, np.mean計算後に次元を保存するか)で構成されている。
         self._args = args
-        self.output = np.tile(self._srcs[0].value, self._args[1])
+        self.output = np.tile(self._srcs[0].value, self._args[1]).astype(np.float32)
 
     def backward(self, err_sig):
         self._srcs[0].acc_grad(np.mean(err_sig, axis=self._args[0], keepdims=self._args[2]))
