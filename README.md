@@ -90,8 +90,8 @@ optimizer = node.SGD(classifier.get_parameters(), 0.001)
 ~~~python
 input = node.Node(np.random.randn(1, 10))
 target = node.Node(np.random.randn(1, 10))
-target = classifier(input)
-loss = target.softmax_with_cross_entropy(target)
+prediction = classifier(input)
+loss = prediction.softmax_with_cross_entropy(target)
 ~~~
 
 ### バックワード計算
