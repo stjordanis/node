@@ -1,4 +1,3 @@
-from sklearn.preprocessing import StandardScaler
 import numpy as np 
 import random
 
@@ -14,7 +13,7 @@ def _stack(mini_batch):
     for _p, _t in mini_batch:
         _pattern.append(_p)
         _target.append(_t)
-    # return Node((np.array(_pattern)-127.5) / 127.5), Node(np.array(_target))
+    
     return Node(np.array(_pattern)), Node(np.array(_target))
 
 class DataLoader(object):

@@ -15,13 +15,8 @@ class Optimizer(object):
         raise(NotImplementedError)
 
 class SGD(Optimizer):
-    """
-    モーメンタム:
-        Δw_{t} <- -1. * (lerning rate) * (δE/δw) + (momentum) * Δw_{t-1}
-        w <- w + Δw_{t}
-    """
 
-    def __init__(self, parameters, learning_rate=0.01, decay=0., **kwargs):
+    def __init__(self, parameters, learning_rate=0.01, decay=0, **kwargs):
 
         super().__init__(parameters)
 
@@ -37,7 +32,7 @@ class SGD(Optimizer):
             grad = self.parameters[i].grad
             delta = - self.learning_rate * grad
 
-            if self.decay != 0.:
+            if self.decay != 0:
                 delta -= self.learning_rate * self.decay * self.parameters[i].value 
 
             self.parameters[i].update(delta)

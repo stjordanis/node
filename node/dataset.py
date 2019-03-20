@@ -10,7 +10,7 @@ def _load_mnist_labels(path):
 
     return labels
 
-def _load_mnist_images(path):
+def _load_mnist_images(path, flatten=False):
 
     with gzip.open(path) as f:
         # Refer to https://weblabo.oscasierra.net/python/ai-mnist-data-detail.html for how MNIST files are constructed
@@ -20,8 +20,13 @@ def _load_mnist_images(path):
         row_size = int.from_bytes(raw_data[8:12], "big")
         col_size = int.from_bytes(raw_data[12:16], "big")
         # np.frombuffer reads a byte sequence directly
+
         # ! np.uint8 corresponds to unsigned byte
-        images = np.frombuffer(raw_data, np.uint8, offset=16).reshape(image_num, row_size*col_size)
+        images = np.frombuffer(raw_data, np.uint8, offset=16)
+        if not flatten:
+            images = images.reshape(image_num, 1, row_size, col_size)
+        else:
+            images = images.reshape(image_num, row_size*col_size)
 
     return images
 
@@ -40,7 +45,7 @@ class Dataset(object):
 
 class MNIST(Dataset):
 
-    def __init__(self, training=True):
+    def __init__(self, training=True, flatten=False):
 
         # trainingがTrueの場合、訓練用のデータのロードする。
         if training:
@@ -48,7 +53,7 @@ class MNIST(Dataset):
         else:
             paths = ["../datasets/mnist/t10k-images-idx3-ubyte.gz", "../datasets/mnist/t10k-labels-idx1-ubyte.gz"]
 
-        self._x = _load_mnist_images(paths[0]).astype(np.float64)
+        self._x = _load_mnist_images(paths[0], flatten).astype(np.float64)
         self._y = _load_mnist_labels(paths[1])
 
     def __len__(self):
