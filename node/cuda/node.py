@@ -13,6 +13,11 @@ def __init__(self, value, no_grad=False):
 
 setattr(Node, "__init__", __init__)
 
+def get_err_sig(self, shape):
+    return cp.ones(shape)
+
+setattr(Node, "get_err_sig", get_err_sig)
+
 """
 Nodeインスタンスが持つデータのGPUやCPUへの転送方法を実装する。
 """

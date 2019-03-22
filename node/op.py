@@ -9,7 +9,7 @@ class Op(object):
     def __init__(self, *srcs):
         """
         引数
-            srcs: オペランドのリスト
+            srcs: オペランドやバックワード演算に必要な値のリスト
         """
         self._srcs = srcs
 
@@ -489,3 +489,60 @@ class Lower(Op):
             dx[:, :, i:stops[0]:self._srcs[2], j:stops[1]:self._srcs[2]] += err_sig[:, :, i, j, :, :]
 
         self._srcs[0].acc_grad(dx[:, :, self._srcs[3]:S+self._srcs[3], self._srcs[3]:S+self._srcs[3]])
+
+class Higher(Op):
+    """
+    Lowringと逆の操作を行う
+    """
+
+    def __init__(self, x, output_size, num_in_ch, filter_size, stride=1, pad=0):
+        # Nはバッチサイズと出力のサイズの積
+        # Sはフィルターのサイズと入力のチャンネル数の積
+        N, S = x.value.shape
+
+        # アウトプットの形を計算
+        # --- 参考 ---
+        # http://deeplearning.net/software/theano/tutorial/conv_arithmetic.html 
+        a = (output_size + 2 * pad - filter_size) % stride
+        input_size = stride * (output_size - 1) + a + filter_size - 2 * pad
+
+        # y[:, :, i, j, :, :]が各畳み込みのi行j列の要素を指すように変形
+        y = x.value.reshape(N, output_size, output_size, num_in_ch, filter_size, filter_size)
+        y = y.transpose(0, 3, 4, 5, 1, 2)
+
+        # 出力を埋める
+        self.output = np.zeros(
+            [
+                N, 
+                num_in_ch, 
+                input_size + 2 * pad + stride - 1, 
+                input_size + 2 * pad + stride - 1
+            ]
+        )
+        for i, j in it.product(range(filter_size), repeat=2):
+            stops = [i + stride * output_size, j + stride * output_size]
+            self.output[:, :, i:stops[0]:stride, j:stops[1]:stride] += y[:, :, i, j, :, :]
+
+        # バックワード演算用に保存
+        super(Higher, self).__init__(x, 
+                                     input_size,
+                                     output_size,
+                                     num_in_ch,
+                                     filter_size,
+                                     stride,
+                                     pad)
+
+    def backward(self, err_sig):
+        x, input_size, output_size, num_in_ch, filter_size, stride, pad = self._srcs
+
+        # 出力の型を用意する
+        dx = np.zeros([x.value.shape[0], num_in_ch, filter_size, filter_size, output_size, output_size])
+
+        # 通常のLoweringのように畳み込む部分を埋める
+        for i, j in it.product(range(filter_size), repeat=2):
+            stops = [i + stride * output_size, j + stride * output_size]
+            dx[:, :, i, j, :, :] = err_sig[:, :, i:stops[0]:stride, j:stops[1]:stride]
+
+        # チャンネル数分の畳み込む部分を行ベクトルに持つ行列に変換
+        dx = dx.transpose(0, 4, 5, 1, 2, 3).reshape(x.value.shape[0]*(output_size**2), -1)
+        x.acc_grad(dx)

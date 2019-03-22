@@ -17,9 +17,11 @@ import cupy as cp
     addition
 """
 
-#######
-# dot #
-#######
+##################################
+###                            ###
+### Vector (Matrix) Operations ###
+###                            ###
+##################################
 
 class Dot(Op):
 
@@ -37,9 +39,11 @@ def dot(self, x):
 
 setattr(Node, "dot", dot)
 
-################
-# その他の演算 #
-################
+##############
+###        ###
+### Others ###
+###        ###
+##############
 
 class Rep(Op):
     """
@@ -81,6 +85,12 @@ def rep(self, axis=0, times=1, keepdims=True):
 
 setattr(Node, "rep", rep)
 
+######################
+###                ###
+### Loss Functions ###
+###                ###
+######################
+
 class SoftmaxWithCrossEntropy(Op):
     def __init__(self, x, y, *args):
         super().__init__(x, y)
@@ -104,3 +114,60 @@ def softmax_with_cross_entropy(self, x):
     return SoftmaxWithCrossEntropy(self, x)
 
 setattr(Node, "softmax_with_cross_entropy", softmax_with_cross_entropy)
+
+####################
+###              ###
+### Convolutions ###
+###              ###
+####################
+
+class Lower(Op):
+    """
+    畳み込み演算を行列積に変換する。
+    """
+
+    def __init__(self, x, filter_size, stride=1, pad=0):
+        """
+        引数
+            x: 入力
+            filter_size: フィルターの大きさ
+            stride: 畳み込みの間隔
+            pad: パディングの大きさ
+        """
+        # 入力の形を取り出す
+        # 高さと幅は同じなので、一つだけ使う
+        N, C, S, _ = x.value.shape
+
+        # 出力の形を計算する
+        output_size = (S + 2 * pad - filter_size) // stride + 1
+
+        # 入力にパディングする
+        y = cp.pad(x.value, [(0, 0), (0, 0), (pad, pad), (pad, pad)], "constant")
+
+        super(Lower, self).__init__(x, filter_size, stride, pad, output_size)
+
+        # 出力の型を用意する
+        self.output = cp.zeros([N, C, filter_size, filter_size, output_size, output_size])
+
+        # i:stops[0 or 1]:strideで各畳み込みのi行j列の値のインデックスを指定している
+        # self.output[:, :, i, j, :, :]に各畳み込みのi行j列の値の行列を代入している
+        for i, j in it.product(range(filter_size), repeat=2):
+            stops = [i + stride * output_size, j + stride * output_size]
+            self.output[:, :, i, j, :, :] = y[:, :, i:stops[0]:stride, j:stops[1]:stride]
+
+        self.output = self.output.transpose(0, 4, 5, 1, 2, 3).reshape(N*(output_size**2), -1)
+
+    def backward(self, err_sig):
+        N, C, S, _ = self._srcs[0].value.shape
+
+        # 誤差信号を行列から元の形に戻す
+        err_sig = err_sig.reshape(N, self._srcs[4], self._srcs[4], C, self._srcs[1], self._srcs[1])
+        err_sig = err_sig.transpose(0, 3, 4, 5, 1, 2)
+
+        # 誤差信号を足し合わせる
+        dx = cp.zeros([N, C, S + 2 * self._srcs[3] + self._srcs[2] - 1, S + 2 * self._srcs[3] + self._srcs[2] - 1])
+        for i, j in it.product(range(self._srcs[1]), repeat=2):
+            stops = [i + self._srcs[2] * self._srcs[4], j + self._srcs[2] * self._srcs[4]]
+            dx[:, :, i:stops[0]:self._srcs[2], j:stops[1]:self._srcs[2]] += err_sig[:, :, i, j, :, :]
+
+        self._srcs[0].acc_grad(dx[:, :, self._srcs[3]:S+self._srcs[3], self._srcs[3]:S+self._srcs[3]])

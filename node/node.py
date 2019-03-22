@@ -380,6 +380,10 @@ class Node(object):
     def lower(self, filter_size, stride=1, pad=0):
         return op.Lower(self, filter_size, stride, pad)
 
+    @_single_oprand_op
+    def higher(self, input_size, num_in_ch, filter_size, stride=1, pad=0):
+        return op.Higher(self, input_size, num_in_ch, filter_size, stride, pad)
+
     def acc_grad(self, grad):
         if not self._no_grad:
             self.grad += grad
@@ -393,13 +397,16 @@ class Node(object):
     def clear_tree(self):
         others._destruct_tree()
 
+    def get_err_sig(self, shape):
+        return np.ones(shape)
+
     def backward(self, err_sig=None):
         for i, pair in enumerate(TREE[::-1]):
             if i == 0:
                 if err_sig is not None:
                     pair.op.backward(err_sig)
                 else:
-                    pair.op.backward(np.ones(self.value.shape))
+                    pair.op.backward(self.get_err_sig(self.value.shape))
             else:
                 pair.op.backward(pair.node.grad)
 

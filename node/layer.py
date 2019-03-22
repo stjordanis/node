@@ -145,6 +145,12 @@ class RecurrentLayer(RecurrentCell):
 
         return cat(seq, axis=1) 
 
+####################
+###              ###
+### Convolutions ###
+###              ###
+####################
+
 class Conv2D(Layer):
     """
     各チャンネルの入力が2Dデータの場合の畳み込み演算
@@ -160,7 +166,7 @@ class Conv2D(Layer):
         # Loweringされた行列との積をとるので、あらかじめ行列にしておく
         self.parameters = {
             "W": node.Node(np.random.randn(num_out_ch, num_in_ch, filter_size, filter_size)),
-            "b": node.Node(np.random.randn(num_out_ch))
+            "b": node.Node(np.zeros(num_out_ch))
         }
 
     def __call__(self, input):
@@ -173,6 +179,23 @@ class Conv2D(Layer):
         N, C, H, W = input.value.shape
         output_size = 1 + int((H + 2 * self.pad - self.filter_size) / self.stride)
         return hidden.reshape(N, output_size, output_size, -1).transpose(0, 3, 1, 2)
+
+class ConvTranspose2D(Layer):
+    """
+    畳み込み層のバックワード計算を使ったTransposed Convolution層
+    """
+
+    def __init__(self, num_in_ch, num_out_ch, filter_size, stride=1, pad=0):
+        super(ConvTranspose2D, self).__init__()
+
+        self.filter_size = filter_size
+        self.stride = stride 
+        self.pad = pad
+
+        # 
+        self.parameters = {
+            "W": node.Node(np.random.randn(num_in_ch, num_out_ch, filter_size, filter_size) * 0.001)
+        }
 
 class MaxPool2D(Layer):
     """

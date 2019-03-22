@@ -16,10 +16,12 @@ class Optimizer(object):
 
 class SGD(Optimizer):
 
-    def __init__(self, parameters, learning_rate=0.01, decay=0, **kwargs):
+    def __init__(self, 
+                 parameters, 
+                 learning_rate=1e-3, 
+                 decay=0):
 
-        super().__init__(parameters)
-
+        self.parameters = parameters
         self.learning_rate = learning_rate
 
         # Wight Decayの程度をコントロールするハイパーパラメーター
@@ -27,18 +29,12 @@ class SGD(Optimizer):
         self.decay = decay
 
     def __call__(self):
-
-        for i in range(len(self.parameters)):
-            grad = self.parameters[i].grad
-            delta = - self.learning_rate * grad
-
-            if self.decay != 0:
-                delta -= self.learning_rate * self.decay * self.parameters[i].value 
-
+        for i, parameter in enumerate(self.parameters):
+            delta = -self.learning_rate * parameter.grad 
+            delta -= self.learning_rate * self.decay * parameter.value 
             self.parameters[i].update(delta)
 
     def zero_grad(self):
-
         for i in range(len(self.parameters)):
             self.parameters[i].zero_grad()
 
