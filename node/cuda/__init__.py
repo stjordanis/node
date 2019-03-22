@@ -1,3 +1,4 @@
-import node.cuda.node
-import node.cuda.op
-import node.cuda.network
+from node.cuda.node import *
+from node.cuda.op import *
+from node.cuda.network import *
+from node.cuda.optimizer import *

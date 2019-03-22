@@ -283,7 +283,6 @@ class Max(Op):
             args[0]: どの軸方向に最大値をとるか
         """
         indeces = np.argmax(x.value, args[0])
-        indeces = np.expand_dims(indeces, axis=args[0])
         self.output = np.take_along_axis(x.value, indeces, axis=args[0])
 
         # 最大値のインデックスはバックワード演算時に使う

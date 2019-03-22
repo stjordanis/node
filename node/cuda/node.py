@@ -1,7 +1,7 @@
 import numpy as np
 import cupy as cp
 
-from ..node import Node, _destruct_tree, TREE
+from ..node import Node, _destruct_tree
 
 def __init__(self, value, no_grad=False):
     self.value = value

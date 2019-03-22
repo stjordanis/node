@@ -1,10 +1,10 @@
-from ..node import Node, Op
-from ..node import _scaler2node, _broadcast
-from ..node import _single_oprand_op, _two_oprand_op
-from ..network import Network
-
 import numpy as np 
 import cupy as cp
+import itertools as it
+
+from ..node import Node
+from ..node import _single_oprand_op, _two_oprand_op
+from ..op import Op
 
 """
 各演算をcuda対応版の演算にオーバーロードする。
@@ -84,6 +84,36 @@ def rep(self, axis=0, times=1, keepdims=True):
     return Rep(self, axis, times, keepdims)
 
 setattr(Node, "rep", rep)
+
+class Max(Op):
+    """
+    入力が与えられたとき、指定された軸方向の最大値を返す。
+    """
+
+    def __init__(self, x, *args):
+        """
+        引数
+            args[0]: どの軸方向に最大値をとるか
+        """
+        indeces = cp.argmax(x.value, args[0])
+        self.output = cp.max(x.value, axis=args[0])
+
+        # 最大値のインデックスはバックワード演算時に使う
+        super(Max, self).__init__(x, indeces, *args)
+
+    def backward(self, err_sig):
+        x, indeces, axis = self._srcs
+
+        dx = cp.zeros(x.value.shape)
+        dx[cp.arange(indeces.size), indeces.flatten()] = err_sig.flatten()
+
+        x.acc_grad(dx)
+
+@_single_oprand_op
+def max(self, axis=1):
+    return Max(self, axis)
+
+setattr(Node, "max", max)
 
 ######################
 ###                ###
@@ -171,3 +201,9 @@ class Lower(Op):
             dx[:, :, i:stops[0]:self._srcs[2], j:stops[1]:self._srcs[2]] += err_sig[:, :, i, j, :, :]
 
         self._srcs[0].acc_grad(dx[:, :, self._srcs[3]:S+self._srcs[3], self._srcs[3]:S+self._srcs[3]])
+
+@_single_oprand_op
+def lower(self, filter_size, stride=1, pad=0):
+    return Lower(self, filter_size, stride, pad)
+
+setattr(Node, "lower", lower)

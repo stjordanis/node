@@ -37,7 +37,7 @@ class Linear(Layer):
 
         return x.dot(self.parameters["W"]) + self.parameters["b"]
 
-class BatchNorm(Layer):
+class BatchNorm1D(Layer):
     """
     バッチ正則化レイヤー
 
@@ -52,7 +52,7 @@ class BatchNorm(Layer):
         alpha := 移動平均の更新率をコントロールするハイパーパラメーター
         """
 
-        super(BatchNorm, self).__init__()
+        super(BatchNorm1D, self).__init__()
 
         self.parameters = {
             "W": node.Node(np.random.randn(num_in_units) * np.sqrt(1. / num_in_units)),
@@ -74,6 +74,49 @@ class BatchNorm(Layer):
         # 訓練時はミニバッチの統計量を使って入力を正規化する
         if self.is_train:
             _mu = x.mean()
+            _sigma = (((x - _mu) ** 2).mean() + self.eps).sqrt()
+
+            # 全体の統計量を更新する
+            self.mu = self.alpha * self.mu + (1 - self.alpha) * _mu.value
+            self.sigma = self.alpha * self.sigma + (1 - self.alpha) * _sigma.value
+
+        # 推定時は移動平均の値を使って入力を正規化する
+        else:
+            _mu = self.mu 
+            _sigma = self.sigma
+
+        return self.parameters["W"] * ((x - _mu) / _sigma) + self.parameters["b"]
+
+class BatchNorm2D(Layer):
+    
+    def __init__(self, num_in_ch, alpha=0.999):
+        """
+        num_in_ch := 前のレイヤーのチャンネル数
+        alpha := 移動平均の更新率をコントロールするハイパーパラメーター
+        """
+
+        super(BatchNorm2D, self).__init__()
+
+        self.parameters = {
+            "W": node.Node(np.random.randn(num_in_ch) * np.sqrt(1. / num_in_ch)),
+            "b": node.Node(np.zeros(num_in_units))
+        }
+
+        self.alpha = alpha
+
+        # 標準偏差で除算する際にゼロ除算エラーが発生しないようにする
+        self.eps = 1e-8
+
+        # データセット全体の統計量をバッチごとに移動平均で計算された値で近似する
+        # この値は推定時に使われる
+        self.mu = np.zeros(shape=[1, num_in_units])
+        self.sigma = np.ones(shape=[1, num_in_units])
+
+    def __call__(self, x):
+        
+        # 訓練時はミニバッチの統計量を使って入力を正規化する
+        if self.is_train:
+            _mu = x.mean(1)
             _sigma = (((x - _mu) ** 2).mean() + self.eps).sqrt()
 
             # 全体の統計量を更新する
