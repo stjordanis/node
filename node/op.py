@@ -239,10 +239,20 @@ class Cat(Op):
             self._srcs[0][t].acc_grad(y)
 
 class Rep(Op):
+    """
+    ある軸方向にある回数だけ同じ値を複製する
+    """
+
     def __init__(self, x, *args):
+        """
+        引数
+            args[0](int): どの軸方向に展開するか
+            args[1](int): 何回展開するか
+            args[2](bool): 計算後に次元を保存するか
+        """
         axis, times, keepdims = args
-        super(Rep, self).__init__(x, axis, times, keepdims)
         self.output = np.repeat(x.value, times, axis=axis).astype(np.float32)
+        super(Rep, self).__init__(x, axis, times, keepdims)
 
     def backward(self, err_sig):
         x, axis, times, keepdims = self._srcs
@@ -266,7 +276,7 @@ class Expand(Op):
     """
 
     def __init__(self, x, *args):
-        axis = args
+        axis = args[0]
         self.output = np.expand_dims(x.value, axis=axis)
         super(Expand, self).__init__(x, axis)
 
@@ -286,8 +296,6 @@ class Max(Op):
         indeces = np.argmax(x.value, args[0])
         indeces = np.expand_dims(indeces, axis=args[0])
         self.output = np.take_along_axis(x.value, indeces, axis=args[0])
-
-        # 最大値のインデックスはバックワード演算時に使う
         super(Max, self).__init__(x, indeces, *args)
 
     def backward(self, err_sig):
