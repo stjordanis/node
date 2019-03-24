@@ -27,11 +27,12 @@ class Dot(Op):
 
     def __init__(self, x, y, *args):
         super().__init__(x, y)
-        self.output = cp.dot(self._srcs[0].value, self._srcs[1].value)
+        self.output = cp.dot(x.value, y.value)
 
     def backward(self, err_sig):
-        self._srcs[0].acc_grad(cp.dot(err_sig, self._srcs[1].value.T))
-        self._srcs[1].acc_grad(cp.dot(self._srcs[0].value.T, err_sig))
+        x, y = self._srcs
+        x.acc_grad(cp.dot(err_sig, y.value.T))
+        y.acc_grad(cp.dot(x.value.T, err_sig))
 
 @_two_oprand_op
 def dot(self, x):
@@ -46,20 +47,6 @@ setattr(Node, "dot", dot)
 ##############
 
 class Rep(Op):
-    """
-    Example:
-    
-    args[0] = 0
-    args[1] = 3
-
-    [1,2,3] 
-    
-    --->
-
-    [[1,2,3],
-     [1,2,3],
-     [1,2,3]]
-    """
 
     def __init__(self, x, *args):
         """
@@ -68,16 +55,13 @@ class Rep(Op):
             args[1](int): 何回展開するか
             args[2](bool): 計算後に次元を保存するか
         """
-        super(Rep, self).__init__(x)
-
-        self.axis = args[0]
-        self.times = args[1]
-        self.keepdims = args[2]
-
-        self.output = cp.tile(x.value, self.times)
+        axis, times, keepdims = args
+        self.output = cp.repeat(x.value, times, axis=axis)
+        super(Rep, self).__init__(x, axis, times, keepdims)
 
     def backward(self, err_sig):
-        self._srcs[0].acc_grad(cp.mean(err_sig, axis=self.axis, keepdims=self.keepdims))
+        x, axis, times, keepdims = self._srcs
+        x.acc_grad(cp.mean(err_sig, axis=axis, keepdims=keepdims))
 
 @_single_oprand_op
 def rep(self, axis=0, times=1, keepdims=True):
@@ -95,18 +79,15 @@ class Max(Op):
         引数
             args[0]: どの軸方向に最大値をとるか
         """
-        indeces = cp.argmax(x.value, args[0])
-        self.output = cp.max(x.value, axis=args[0])
-
-        # 最大値のインデックスはバックワード演算時に使う
-        super(Max, self).__init__(x, indeces, *args)
+        axis = args[0]
+        indeces = cp.argmax(x.value, axis=axis)
+        self.output = cp.max(x.value, axis=axis)
+        super(Max, self).__init__(x, indeces, axis)
 
     def backward(self, err_sig):
         x, indeces, axis = self._srcs
-
         dx = cp.zeros(x.value.shape)
         dx[cp.arange(indeces.size), indeces.flatten()] = err_sig.flatten()
-
         x.acc_grad(dx)
 
 @_single_oprand_op
