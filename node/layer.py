@@ -46,7 +46,7 @@ class BatchNorm1D(Layer):
     https://arxiv.org/abs/1702.03275
     """
 
-    def __init__(self, num_in_units, alpha=0.999):
+    def __init__(self, num_in_units, alpha=0.9, eps=1e-8):
         """
         num_in_units := 前のレイヤーのユニット数
         alpha := 移動平均の更新率をコントロールするハイパーパラメーター
@@ -55,14 +55,14 @@ class BatchNorm1D(Layer):
         super(BatchNorm1D, self).__init__()
 
         self.parameters = {
-            "W": node.Node(np.random.randn(num_in_units) * np.sqrt(1. / num_in_units)),
+            "W": node.Node(np.random.randn(num_in_units)),
             "b": node.Node(np.zeros(num_in_units))
         }
 
         self.alpha = alpha
 
         # 標準偏差で除算する際にゼロ除算エラーが発生しないようにする
-        self.eps = 1e-8
+        self.eps = eps
 
         # データセット全体の統計量をバッチごとに移動平均で計算された値で近似する
         # この値は推定時に使われる
@@ -89,46 +89,50 @@ class BatchNorm1D(Layer):
 
 class BatchNorm2D(Layer):
     
-    def __init__(self, num_in_ch, alpha=0.999):
+    def __init__(self, num_in_ch, alpha=0.9, eps=1e-8):
         """
-        num_in_ch := 前のレイヤーのチャンネル数
-        alpha := 移動平均の更新率をコントロールするハイパーパラメーター
+        引数
+            num_in_ch: 前のレイヤーのチャンネル数
+            alpha: 移動平均の更新率をコントロールするハイパーパラメーター
+            eps: ゼロ除算を防ぐ小さな値
         """
 
         super(BatchNorm2D, self).__init__()
 
         self.parameters = {
-            "W": node.Node(np.random.randn(num_in_ch) * np.sqrt(1. / num_in_ch)),
-            "b": node.Node(np.zeros(num_in_units))
+            "W": node.Node(np.random.randn(1, num_in_ch, 1, 1)),
+            "b": node.Node(np.zeros([1, num_in_ch, 1, 1]))
         }
 
         self.alpha = alpha
 
         # 標準偏差で除算する際にゼロ除算エラーが発生しないようにする
-        self.eps = 1e-8
+        self.eps = eps
 
         # データセット全体の統計量をバッチごとに移動平均で計算された値で近似する
         # この値は推定時に使われる
-        self.mu = np.zeros(shape=[1, num_in_units])
-        self.sigma = np.ones(shape=[1, num_in_units])
+        self.running_mu = np.zeros(shape=[1, num_in_ch, 1, 1])
+        self.running_sigma = np.ones(shape=[1, num_in_ch, 1, 1])
 
     def __call__(self, x):
         
         # 訓練時はミニバッチの統計量を使って入力を正規化する
         if self.is_train:
-            _mu = x.mean(1)
-            _sigma = (((x - _mu) ** 2).mean() + self.eps).sqrt()
+            mu = x.mean(0).mean(2).mean(3)
+            sigma = (((x - mu) ** 2).mean(0).mean(2).mean(3) + self.eps).sqrt()
 
             # 全体の統計量を更新する
-            self.mu = self.alpha * self.mu + (1 - self.alpha) * _mu.value
-            self.sigma = self.alpha * self.sigma + (1 - self.alpha) * _sigma.value
+            self.running_mu = self.alpha * self.running_mu \
+                                + (1 - self.alpha) * mu.value
+            self.running_sigma = self.alpha * self.running_sigma \
+                                + (1 - self.alpha) * sigma.value
 
         # 推定時は移動平均の値を使って入力を正規化する
         else:
-            _mu = self.mu 
-            _sigma = self.sigma
+            mu = self.mu 
+            sigma = self.sigma
 
-        return self.parameters["W"] * ((x - _mu) / _sigma) + self.parameters["b"]
+        return self.parameters["W"] * ((x - mu) / sigma) + self.parameters["b"]
 
 class RecurrentCell(Layer):
     """
