@@ -240,13 +240,13 @@ class Cat(Op):
 
 class Rep(Op):
     def __init__(self, x, *args):
-        super().__init__(x)
-        # ! argsは(axis, times, np.mean計算後に次元を保存するか)で構成されている。
-        self._args = args
-        self.output = np.tile(self._srcs[0].value, self._args[1]).astype(np.float32)
+        axis, times, keepdims = args
+        super(Rep, self).__init__(x, axis, times, keepdims)
+        self.output = np.repeat(x.value, times, axis=axis).astype(np.float32)
 
     def backward(self, err_sig):
-        self._srcs[0].acc_grad(np.mean(err_sig, axis=self._args[0], keepdims=self._args[2]))
+        x, axis, times, keepdims = self._srcs
+        x.acc_grad(np.mean(err_sig, axis=axis, keepdims=keepdims))
 
 class Clip(Op):
     def __init__(self, x, *args):
@@ -266,8 +266,9 @@ class Expand(Op):
     """
 
     def __init__(self, x, *args):
-        super(Expand, self).__init__(x, *args)
-        self.output = np.expand_dims(x.value, axis=args[0])
+        axis = args
+        self.output = np.expand_dims(x.value, axis=axis)
+        super(Expand, self).__init__(x, axis)
 
     def backward(self, err_sig):
         self._srcs[0].acc_grad(np.squeeze(err_sig, axis=self._srcs[1]))
@@ -283,6 +284,7 @@ class Max(Op):
             args[0]: どの軸方向に最大値をとるか
         """
         indeces = np.argmax(x.value, args[0])
+        indeces = np.expand_dims(indeces, axis=args[0])
         self.output = np.take_along_axis(x.value, indeces, axis=args[0])
 
         # 最大値のインデックスはバックワード演算時に使う

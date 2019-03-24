@@ -83,84 +83,21 @@ def _scaler2node(fn):
 
     return _wrapper
 
-def _core_broadcast(x, y):
+def _core_broadcast(x, shape):
     """
-    両Operand間で演算が定義できるように必要ならば形を変える。
-
     引数
-        x, y: Nodeインスタンス
+        x: オペランド
+        shape: ブロードキャスト後のオペランドの形 
     """
+    # 次元数が足りなければ、先頭に次元を追加する
+    for axis in range(len(shape) - len(x.value.shape)): 
+        x = x.expand(0)
 
-    # 1.
-    # スカラー x ベクトル(行列) 
-    if len(x.value.shape) == 0:
-        z = x.rep(None, y.value.shape, False)
-        return z, y
+    for axis in range(len(shape)):
+        if x.value.shape[axis] != shape[axis]:
+            x = x.rep(axis, shape[axis])
 
-    elif len(y.value.shape) == 0:
-        z = y.rep(None, x.value.shape, False)
-        return x, z
-
-    # 2.
-    # ベクトル x 行列
-    if x.value.ndim == 1 and y.value.ndim == 2:
-
-        # ベクトルの要素数が行列の列数と合わない場合、ValueErrorを発生させる。
-        if x.value.shape[0] != y.value.shape[1]:
-            print("The size of y should match one of the last dimension of x.")
-            print("x shape: {}".format(x.value.shape))
-            print("y shape: {}".format(y.value.shape))
-            raise(ValueError)  
-
-        z = x.rep(0, (y.value.shape[0], 1), False)
-        return z, y
-
-    elif x.value.ndim == 2 and y.value.ndim == 1:
-
-        if x.value.shape[1] != y.value.shape[0]:
-            print("The size of y should match one of the last dimension of x.")
-            print("x shape: {}".format(x.value.shape))
-            print("y shape: {}".format(y.value.shape))
-            raise(ValueError)  
-
-        z = y.rep(0, (x.value.shape[0], 1), False)
-        return x, z
-
-    # 3.
-    # 行列 x 行列
-    if x.value.ndim == 2 and y.value.ndim == 2:
-
-        # 行数も列数も異なり、かつそれらが1でない場合、ValueErrorを発生させる。
-        if x.value.shape[0] != y.value.shape[0] and x.value.shape[1] != y.value.shape[1]:
-            if x.value.shape[0] != 1 and x.value.shape[1] != 1:
-                raise(ValueError)
-                
-            elif y.value.shape[0] != 1 and y.value.shape[1] != 1:
-                raise(ValueError)
-
-        # xとyで列数が違う場合、多い方に合わせて少ない方をブロードキャストする。
-        if x.value.shape[1] < y.value.shape[1]:
-            z = x.rep(1, (1, y.value.shape[1]), True)
-            return z, y
-
-        elif x.value.shape[1] > y.value.shape[1]:
-            z = y.rep(1, (1, x.value.shape[1]), True)
-            return x, z
-
-        # xとyで列数が違う場合、多い方に合わせて少ない方をブロードキャストする。 
-        if x.value.shape[0] < y.value.shape[0]:
-            z = x.rep(0, (y.value.shape[0], 1), True)
-            return z, y
-
-        else:
-            z = y.rep(0, (x.value.shape[0], 1), True)
-            return x, z
-
-    # ここには到達しない。
-    else:
-        raise(ValueError)
-
-    return x, y
+    return x
 
 def _broadcast(fn):
     """
@@ -171,7 +108,9 @@ def _broadcast(fn):
 
         # xとyをスワップすると、-など可換でないオペランドの場合にバグが発生するので、xとyを別々に考える必要がある。
         if x.value.shape != y.value.shape:
-            x, y = _core_broadcast(x, y)
+            shape = np.broadcast(x.value, y.value).shape
+            x = _core_broadcast(x, shape)
+            y = _core_broadcast(y, shape)
 
         return fn(x, y)
 
