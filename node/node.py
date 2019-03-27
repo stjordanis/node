@@ -1,171 +1,116 @@
-from . import op
+try:
+    import cupy as np
+    DEVICE = "gpu"
+    print("GPU")
+except:
+    import numpy as np
+    DEVICE = "cpu"
+    print("CPU")
 
-import numpy as np
-from collections import *
+import collections
+import node.op as op
 
-"""
-動的計算グラフを表すリスト。各要素はあるOpとNodeのペアで構成され、バックワード計算の際に後ろから順に誤差信号を伝播する。
-"""
-Pair = namedtuple("Pair", ("op", "node"))
+Pair = collections.namedtuple("Pair", ("op", "node"))
 TREE = []
 
-# このフラグがTrueの時だけ計算ブラフを構築する。
 CONSTRUCT_TREE = True
 class zero_grad(object):
-    """
-    主に類推時に使われる。定義されるwith構文の中では計算グラフが構築されない。
-    """
 
     def __enter__(self, *args):
-
         global CONSTRUCT_TREE
         CONSTRUCT_TREE = False
 
     def __exit__(self, *args):
-
         global CONSTRUCT_TREE
         CONSTRUCT_TREE = True
 
 def _add_new_pair(op, node):
-    """
-    計算グラフにあらたなペアを追加する。
+    global TREE
 
-    引数
-        op: Opインスタンス
-        node: Nodeインスタンス
-    """
-
-    # 計算グラフを構築しないなら、すぐNoneを返す。
     if not CONSTRUCT_TREE:
         return
 
-    global TREE 
     node = Pair(op, node)
     TREE.append(node)
 
 def _destruct_tree():
-    """
-    計算グラフをリセットする。
-    """
-
     global TREE 
     TREE = TREE.__new__(list)
 
 def _core_scaler2node(x):
-    """
-    実数値をNodeインスタンスに変換する。
-
-    引数
-        x: 数値型
-    """
-
-    # パラメーターではなく、葉であるので勾配を計算する必要がない。
     return Node(np.array(x), no_grad=True)
 
 def _scaler2node(fn):
-    """
-    引数を調べてどちらかが数値型なら、Nodeインスタンスにに変換してからfnで定義される演算を行う。
-
-    引数
-        fn: Opクラス
-    """
-
-    def _wrapper(x, y):
-
-        # どちらかが数値型の場合、Nodeインスタンスに変換してからfnで定義される演算を行う。
+    def wrapper(x, y):
         if type(x) != Node:
             x = _core_scaler2node(x)
-
         elif type(y) != Node:
             y = _core_scaler2node(y)
-
         return fn(x, y)
-
-    return _wrapper
+    return wrapper
 
 def _core_broadcast(x, shape):
-    """
-    引数
-        x: オペランド
-        shape: ブロードキャスト後のオペランドの形 
-    """
-    # 次元数が足りなければ、先頭に次元を追加する
+    # 次元数が異なる場合、少ない次元を持つ方の先頭に足りない分だけ1を追加
     for axis in range(len(shape) - len(x.value.shape)): 
         x = x.expand(0)
 
+    # 各次元を最大値に合わせる
     for axis in range(len(shape)):
         if x.value.shape[axis] != shape[axis]:
-            x = x.rep(axis, shape[axis])
-
+            x = x.repeat(axis, shape[axis])
     return x
 
+def _get_shape(x, y):
+    return np.broadcast(x.value, y.value).shape
+
 def _broadcast(fn):
-    """
-    入力の形が異なる場合、一方に合わせて他方の形を変形する。
-    """
-
-    def _wrapper(x, y):
-
-        # xとyをスワップすると、-など可換でないオペランドの場合にバグが発生するので、xとyを別々に考える必要がある。
+    def wrapper(x, y):
         if x.value.shape != y.value.shape:
-            shape = np.broadcast(x.value, y.value).shape
+            shape = _get_shape(x, y)
             x = _core_broadcast(x, shape)
             y = _core_broadcast(y, shape)
-
         return fn(x, y)
-
-    return _wrapper
+    return wrapper
 
 def _two_oprand_op(fn):
-    """
-    2つの値を取る演算子のデコレーター：
-    2つの値を受け取り、fnで定義される演算子を適用する。値がスカラーである場合（Nodeオブジェクトのインスタンスではない）、それをNodeオブジェクトのインスタンスに変換したのち、必要な場合にブロードキャストすることで値間の次元を合わせる。次元と形が等しい2つのNodeオブジェクトのインスタンスが用意できたので、fnで定義される演算子を適用し、その出力で定義されるNodeオブジェクトのインスタンスとのペアを動的計算グラフに追加する。
-    """
-
     def wrapper(x, y):
-        _op = fn(x, y)
-        _node = Node(_op.output)
-        _add_new_pair(_op, _node)
-        return _node
-
+        op = fn(x, y)
+        node = Node(op.output)
+        _add_new_pair(op, node)
+        return node
     return wrapper
 
 def _single_oprand_op(fn):
-    """
-    1つの値を取る演算子のデコレーター：
-    上の関数の値が1つの場合。
-    """
-
     def wrapper(x, *args):
-        # もしxがNodeオブジェクトのインスタンスではない場合、変換しておく。
         if type(x) != Node:
             x = _core_scaler2node(x)
-        _op = fn(x, *args)
-        _node = Node(_op.output)
-        _add_new_pair(_op, _node)
-        return _node
-
+        op = fn(x, *args)
+        node = Node(op.output)
+        _add_new_pair(op, node)
+        return node
     return wrapper
-
-def cat(x, axis=0):
-    """
-    Nodeインスタンスのリストを繋げる
-    """
-
-    op = op.Cat(x, axis)
-    node = Node(op.output)
-    others._add_new_pair(op, node)
-
-    return node
 
 class Node(object):
     def __init__(self, value, no_grad=False):
-        self.value = value
-        self._no_grad = no_grad
-        
-        # no_gradがTrueの場合、このNodeオブジェクトのインスタンスは計算グラフの葉なので、勾配のプロパティを必要としない。
-        if not self._no_grad:
-            self.grad = np.zeros(self.value.shape)
+        """
+        引数
+            value: この変数が持つ値を表す
+            no_grad: この変数が勾配を持つかを表す
+        """
+        self.value = value.astype(np.float32)
+        self.no_grad = no_grad
+
+        # `no_grad`が真のときのみ勾配を初期化
+        if not self.no_grad:
+            self.grad = np.zeros(value.shape)
+
+
+
+    ############################################
+    ###  Add / Subtract / Multiply / Divide  ###
+    ############################################
+
+
 
     @_scaler2node
     @_broadcast
@@ -183,49 +128,85 @@ class Node(object):
     @_broadcast
     @_two_oprand_op
     def __sub__(self, x):
-        return op.Sub(self, x)
+        return op.Subtract(self, x)
 
     @_scaler2node
     @_broadcast
     @_two_oprand_op
     def __rsub__(self, x):
-        return op.Sub(x, self)
+        return op.Subtract(x, self)
 
     @_scaler2node
     @_broadcast
     @_two_oprand_op
     def __mul__(self, x):
-        return op.Mul(self, x)
+        return op.Multiply(self, x)
 
     @_scaler2node
     @_broadcast
     @_two_oprand_op
     def __rmul__(self, x):
-        return op.Mul(x, self)
+        return op.Multiply(x, self)
 
     @_scaler2node
     @_broadcast
     @_two_oprand_op
     def __truediv__(self, x):
-        return op.Div(self, x)
+        return op.Divide(self, x)
 
     @_scaler2node
     @_broadcast
     @_two_oprand_op
     def __rtruediv__(self, x):
-        return op.Div(x, self)
+        return op.Divide(x, self)
+
+
+
+    ###########################
+    ###  Matrix Operations  ###
+    ###########################
+
+
 
     @_two_oprand_op
     def dot(self, x):
         return op.Dot(self, x)
 
     @_single_oprand_op
+    def t(self):
+        return op.T(self)
+
+    @_single_oprand_op
+    def transpose(self, *perm):
+        return op.Transpose(self, perm)
+
+    @_single_oprand_op
+    def reshape(self, *shape):
+        return op.Reshape(self, shape)
+
+    
+
+    ####################
+    ###  Mean / Sum  ###
+    ####################
+
+
+
+    @_single_oprand_op
     def mean(self, axis=0):
         return op.Mean(self, axis)
 
     @_single_oprand_op
-    def sum(self, axis=1):
+    def sum(self, axis=0):
         return op.Sum(self, axis)
+
+    
+
+    ####################
+    ###  Mean / Sum  ###
+    ####################
+
+
 
     @_single_oprand_op
     def __pow__(self, x):
@@ -243,21 +224,17 @@ class Node(object):
     def sqrt(self):
         return op.Sqrt(self)
 
-    @_single_oprand_op
-    def __getitem__(self, idx):
-        return op.GetItem(self, idx)
+
+    
+    ################
+    ###  Others  ###
+    ################
+
+
 
     @_single_oprand_op
-    def gather(self, indeces, axis=1):
-        return op.TakeAlongAxis(self, indeces, axis)
-
-    @_single_oprand_op
-    def rep(self, axis=0, times=1, keepdims=True):
-        return op.Rep(self, axis, times, keepdims)
-
-    @_single_oprand_op
-    def clip(self, min_bound=0., max_bound=np.inf):
-        return op.Clip(self, min_bound, max_bound)
+    def repeat(self, axis, times, keepdims=True):
+        return op.Repeat(self, axis, times, keepdims)
 
     @_single_oprand_op
     def expand(self, axis=1):
@@ -267,17 +244,13 @@ class Node(object):
     def max(self, axis=1):
         return op.Max(self, axis)
 
-    @_single_oprand_op
-    def t(self):
-        return op.T(self)
 
-    @_single_oprand_op
-    def transpose(self, *perm):
-        return op.Transpose(self, perm)
 
-    @_single_oprand_op
-    def reshape(self, *shape):
-        return op.Reshape(self, shape)
+    #####################
+    ###  Activations  ###
+    #####################
+
+
 
     @_single_oprand_op
     def sigmoid(self):
@@ -299,39 +272,51 @@ class Node(object):
     def selu(self):
         return op.SeLU(self)
 
-    @_single_oprand_op
-    def softmax(self):
-        return op.Softmax(self)
+
+
+    ########################
+    ###  Loss Functions  ###
+    ########################
+
+
 
     @_two_oprand_op
     def binary_cross_entropy(self, x):
         return op.BinaryCrossEntropy(self, x)
 
     @_two_oprand_op
-    def softmax_with_cross_entropy(self, x):
-        return op.SoftmaxWithCrossEntropy(self, x)
+    def softmax_with_binary_cross_entropy(self, x):
+        return op.SoftmaxWithBinaryCrossEntropy(self, x)
 
     @_two_oprand_op
     def mean_squared_error(self, x):
         return op.MeanSquaredError(self, x)
+
+
+
+    ######################
+    ###  Convolutions  ###
+    ######################
+
+
 
     @_single_oprand_op
     def lower(self, filter_size, stride=1, pad=0):
         return op.Lower(self, filter_size, stride, pad)
 
     @_single_oprand_op
-    def higher(self, input_size, num_in_ch, filter_size, stride=1, pad=0):
-        return op.Higher(self, input_size, num_in_ch, filter_size, stride, pad)
+    def higher(self, mini_batch_size, output_size, num_in_ch, num_out_ch, filter_size, stride=1, pad=0):
+        return op.Higher(self, mini_batch_size, output_size, num_in_ch, num_out_ch, filter_size, stride, pad)
 
     def acc_grad(self, grad):
-        if not self._no_grad:
+        if not self.no_grad:
             self.grad += grad
 
     def update(self, delta):
         self.value += delta
 
     def zero_grad(self):
-        self.grad.fill(0.)
+        self.grad.fill(0)
 
     def clear_tree(self):
         others._destruct_tree()
@@ -348,5 +333,4 @@ class Node(object):
                     pair.op.backward(self.get_err_sig(self.value.shape))
             else:
                 pair.op.backward(pair.node.grad)
-
         _destruct_tree()

@@ -1,50 +1,43 @@
-import numpy as np 
+try:
+    import cupy as np
+except:
+    import numpy as np
+
 import random
+import node.node as node
 
-from node.node import *
-
-"""
-Take an array list of input and target pair and stack them into a pair of a mini batch.
-"""
-def _stack(mini_batch):
-
-    _pattern = []
-    _target = []
-    for _p, _t in mini_batch:
-        _pattern.append(_p)
-        _target.append(_t)
-    
-    return Node(np.array(_pattern)), Node(np.array(_target))
+def stack(mini_batch):
+    inputs, targets = [], []
+    for input, target in mini_batch:
+        inputs.append(input)
+        targets.append(target)
+    return (node.Node(np.array(inputs), no_grad=True), 
+            node.Node(np.array(targets), no_grad=True))
 
 class DataLoader(object):
 
-    def __init__(self, dataset, batch_size, *args):
-        self._dataset = dataset
-        self._batch_size = batch_size
-        self._idx = [i for i in range(len(self._dataset))]
-        random.shuffle(self._idx)
-        self._i = 0
+    def __init__(self, dataset, mini_batch_size, *args):
+        self.dataset = dataset
+        self.mini_batch_size = mini_batch_size
+        self.idx = [i for i in range(len(self.dataset))]
+        self.i = 0
+        random.shuffle(self.idx)
 
     def __iter__(self, *args):
-
         return self
 
     def __len__(self):
-
-        return len(self._dataset) // self._batch_size
+        return len(self.dataset) // self.mini_batch_size
 
     def __next__(self):
-        
-        if self._i + self._batch_size > len(self._dataset) or self._i == len(self._dataset):
-            self._i = 0
-            random.shuffle(self._idx)
+        if self.i + self.mini_batch_size > len(self.dataset) or self.i == len(self.dataset):
+            self.i = 0
+            random.shuffle(self.idx)
             raise(StopIteration)
 
-        # get a mini-batch
-        _mini_batch = []
-        for _ in range(self._batch_size):
-            _mini_batch.append(self._dataset[self._idx[self._i]])
-            self._i += 1
+        mini_batch = []
+        for _ in range(self.mini_batch_size):
+            mini_batch.append(self.dataset[self.idx[self.i]])
+            self.i += 1
 
-        # convert the mini-batch into node
-        return _stack(_mini_batch)
+        return stack(mini_batch)

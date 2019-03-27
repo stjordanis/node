@@ -1,513 +1,545 @@
-import numpy as np
-import itertools as it
+try:
+    import cupy as np
+except:
+    import numpy as np
+
+import itertools
 
 class Op(object):
-    """
-    各演算は_srcsプロパティに保存した値を使ってバックワード演算を行う。
-    """
+    def __init__(self):
+        self.cache = []
 
-    def __init__(self, *srcs):
-        """
-        引数
-            srcs: オペランドやバックワード演算に必要な値のリスト
-        """
-        self._srcs = srcs
+    def register(self, *cache):
+        self.cache += cache
 
-##########################################################
-###                                                    ###
-### Addition / Subtraction / Multiplication / Division ###
-###                                                    ###
-##########################################################
+
+
+############################################
+###  Add / Subtract / Multiply / Divide  ###
+############################################
+
+
 
 class Add(Op):
+
     def __init__(self, x, y, *args):
-        super().__init__(x, y)
-        self.output = self._srcs[0].value + self._srcs[1].value
+        super(Add, self).__init__()
+        self.register(x, y)
+        self.output = self.forward()
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig)
-        self._srcs[1].acc_grad(err_sig)
+    def forward(self):
+        x, y = self.cache
+        return x.value + y.value
 
-class Sub(Op):
+    def backward(self, error):
+        x, y = self.cache
+        x.acc_grad(error)
+        x.acc_grad(error)
+
+
+class Subtract(Op):
+
     def __init__(self, x, y, *args):
-        super().__init__(x, y)
-        self.output = self._srcs[0].value - self._srcs[1].value
+        super(Subtract, self).__init__()
+        self.register(x, y)
+        self.output = self.forward()
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig)
-        self._srcs[1].acc_grad(-err_sig)
+    def forward(self):
+        x, y = self.cache 
+        return x.value - y.value
 
-class Mul(Op):
+    def backward(self, error):
+        x, y = self.cache 
+        x.acc_grad(error)
+        y.acc_grad(-error)
+
+
+class Multiply(Op):
+
     def __init__(self, x, y, *args):
-        super().__init__(x, y)
-        self.output = self._srcs[0].value * self._srcs[1].value
+        super(Multiply, self).__init__()
+        self.register(x, y)
+        self.output = self.forward()
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig * self._srcs[1].value)
-        self._srcs[1].acc_grad(err_sig * self._srcs[0].value)
+    def forward(self):
+        x, y = self.cache 
+        return x.value * y.value
 
-class Div(Op):
+    def backward(self, error):
+        x, y = self.cache
+        x.acc_grad(error * y.value)
+        y.acc_grad(error * x.value)
+
+
+class Divide(Op):
+
     def __init__(self, x, y, *args):
-        super().__init__(x, y)
-        self.output = self._srcs[0].value / self._srcs[1].value
+        super(Divide, self).__init__()
+        self.register(x, y)
+        self.output = self.forward()
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig / self._srcs[1].value)
-        self._srcs[1].acc_grad(-1. * err_sig * self._srcs[0].value * (self._srcs[1].value**(-2)))
+    def forward(self):
+        x, y = self.cache 
+        return x.value / y.value
 
-##################################
-###                            ###
-### Vector (Matrix) Operations ###
-###                            ###
-##################################
+    def backward(self, error):
+        x, y = self.cache
+        x.acc_grad(error / y.value)
+        y.acc_grad(-error * x.value / (y.value ** 2))
+
+
+
+###########################
+###  Matrix Operations  ###
+###########################
+
+
 
 class Dot(Op):
-    def __init__(self, x, y, *args):
-        super().__init__(x, y)
-        self.output = np.dot(self._srcs[0].value, self._srcs[1].value)
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(np.dot(err_sig, self._srcs[1].value.T))
-        self._srcs[1].acc_grad(np.dot(self._srcs[0].value.T, err_sig))
+    def __init__(self, x, y, *args):
+        super(Dot, self).__init__()
+        self.register(x, y)
+        self.output = self.forward()
+
+    def forward(self):
+        x, y = self.cache 
+        return np.dot(x.value, y.value)
+
+    def backward(self, error):
+        x, y = self.cache
+        x.acc_grad(np.dot(error, y.value.T))
+        y.acc_grad(np.dot(x.value.T, error))
+
 
 class T(Op):
-    def __init__(self, x, *args):
-        super().__init__(x)
-        self.output = self._srcs[0].value.T 
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig.T)
+    def __init__(self, x, *args):
+        super(T, self).__init__()
+        self.register(x)
+        self.output = self.forward()
+
+    def forward(self):
+        x = self.cache[0]
+        return x.value.T
+
+    def backward(self, error):
+        x = self.cache[0]
+        x.acc_grad(error.T)
+
 
 class Transpose(Op):
+
     def __init__(self, x, *args):
-        super().__init__(x)
+        super(Transpose, self).__init__()
+        self.register(x, *args)
+        self.output = self.forward()
 
-        # 逆置き換えを作る
-        self._inversed_fn = [0 for _ in range(len(args[0]))]
-        for i, j in enumerate(args[0]):
-            self._inversed_fn[j] = i
+    def forward(self):
+        x, permutation = self.cache 
 
-        self.output = self._srcs[0].value.transpose(*args[0])
+        # 逆置き換えを計算
+        inv = [0] * len(permutation)
+        for i, j in enumerate(permutation):
+            inv[j] = i
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig.transpose(*self._inversed_fn))
+        self.register(inv)
+        return x.value.transpose(*permutation) 
+
+    def backward(self, error):
+        x, _, inv = self.cache
+        x.acc_grad(error.transpose(*inv))
+
 
 class Reshape(Op):
+
     def __init__(self, x, *args):
-        super().__init__(x)
-        self._original_shape = self._srcs[0].value.shape 
-        self.output = self._srcs[0].value.reshape(*args[0])
+        super(Reshape, self).__init__()
+        self.register(x, *args) 
+        self.output = self.forward()
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig.reshape(*self._original_shape))
+    def forward(self):
+        x, shape = self.cache
+        return x.value.reshape(*shape)
 
-#######################
-###                 ###
-### Mean / Sumation ###
-###                 ###
-#######################
+    def backward(self, error):
+        x, shape = self.cache
+        x.acc_grad(error.reshape(*x.value.shape))
+
+
+
+####################
+###  Mean / Sum  ###
+####################
+
+
 
 class Mean(Op):
-    def __init__(self, x, *args):
-        super().__init__(x)
-        self._axis = args[0]
-        self._original_shape = self._srcs[0].value.shape
-        self.output = np.mean(self._srcs[0].value, axis=self._axis, keepdims=True)
 
-    def backward(self, err_sig):
-        _shape = [1 for _ in range(len(self._original_shape))]
-        _shape[self._axis] = self._original_shape[self._axis]
-        self._srcs[0].acc_grad(err_sig * np.tile(1, _shape) / self._srcs[0].value.shape[self._axis])
+    def __init__(self, x, *args):
+        super(Mean, self).__init__()
+        self.register(x, *args)
+        self.output = self.forward()
+
+    def forward(self):
+        x, axis = self.cache
+        return np.mean(x.value, axis=axis, keepdims=True)
+
+    def backward(self, error):
+        x, axis = self.cache
+        shape = [1] * len(x.value.shape)
+        shape[axis] = x.value.shape[axis]
+        x.acc_grad(error * np.tile(1, shape) / x.value.shape[axis])
+
 
 class Sum(Op):
+
     def __init__(self, x, *args):
-        super().__init__(x)
-        self._axis = args[0]
-        self._original_shape = self._srcs[0].value.shape
-        self.output = np.sum(self._srcs[0].value, axis=self._axis, keepdims=True)
+        super(Sum, self).__init__()
+        self.register(x, *args)
+        self.output = self.forward()
 
-    def backward(self, err_sig):
-        _shape = [1 for _ in range(len(self._original_shape))]
-        _shape[self._axis] = self._original_shape[self._axis]
-        self._srcs[0].acc_grad(np.tile(err_sig, _shape))
+    def forward(self):
+        x, axis = self.cache 
+        return np.sum(x.value, axis=axis, keepdims=True)
 
-######################################################
-###                                                ###
-### Power / Exponential / Logarithm / Ssquare Root ###
-###                                                ###
-######################################################
+    def backward(self, error):
+        x, axis = self.cache
+        shape = [1] * len(x.value.shape)
+        shape[axis] = x.value.shape[axis]
+        x.acc_grad(np.tile(error, shape))
+
+
+
+################################
+###  Pow / Exp / Log / Sqrt  ###
+################################
+
+
 
 class Pow(Op):
-    def __init__(self, x, y, *args):
-        super().__init__(x)
-        self._y = y
-        self.output = self._srcs[0].value ** 2
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig * 2 * (self._srcs[0].value))
+    def __init__(self, x, *args):
+        super(Pow, self).__init__()
+        self.register(x, *args)
+        self.output = self.forward()
+
+    def forward(self):
+        x, y = self.cache 
+        return x.value ** y
+
+    def backward(self, error):
+        x, y = self.cache
+        x.acc_grad(error * y * (x.value ** (y - 1)))
+
 
 class Exp(Op):
-    def __init__(self, x, *args):
-        super().__init__(x)
-        self.output = np.exp(self._srcs[0].value)
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig * self.output)
+    def __init__(self, x, *args):
+        super(Exp, self).__init__()
+        self.register(x)
+        self.output = self.forward()
+
+    def forward(self):
+        x = self.cache[0]
+        return np.exp(x.value)
+
+    def backward(self, error):
+        x = self.cache[0]
+        x.acc_grad(error * self.output)
+
 
 class Log(Op):
-    def __init__(self, x, *args):
-        super().__init__(x)
-        # !
-        self._seed = np.clip(self._srcs[0].value, 1e-100, 1e+100)
-        self.output = np.log(self._seed)
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig / self._seed)
+    def __init__(self, x, *args):
+        super(Log, self).__init__()
+        self.register(x)
+        self.output = self.forward()
+
+    def forward(self):
+        x = self.cache[0]
+        return np.log(x.value)
+
+    def backward(self, error):
+        x = self.cache[0]
+        x.acc_grad(error / x.value)
+
 
 class Sqrt(Op):
-    def __init__(self, x, *args):
-        super().__init__(x)
-        # ! オーバーフローを防ぐ
-        # self.output = np.sqrt(np.clip(self._srcs[0].value, None, 1e+13))
-        self.output = np.sqrt(np.clip(self._srcs[0].value, 1e-13, 1e+13))
-
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig / (2. * self.output))
-
-##############
-###        ###
-### Others ###
-###        ###
-##############
-
-class GetItem(Op):
-    def __init__(self, x, idx):
-        super().__init__(x)
-        self._idx = idx
-        self.output = self._srcs[0].value[self._idx]
-
-    def backward(self, err_sig):
-        mat = np.zeros(self._srcs[0].value.shape)
-        mat[self._idx] += err_sig
-        self._srcs[0].acc_grad(mat)
-
-class TakeAlongAxis(Op):
-    def __init__(self, x, indeces, axis):
-        super().__init__(x)
-        self._indeces = indeces.reshape(-1, 1)
-        self._axis = axis
-        self.output = np.take_along_axis(self._srcs[0].value, self._indeces, self._axis)
-
-    def backward(self, err_sig):
-        mat = np.zeros(self._srcs[0].value.shape)
-        np.put_along_axis(mat, self._indeces, err_sig, self._axis)
-        self._srcs[0].acc_grad(mat)
-
-class Cat(Op):
-    """
-    Nodeインスタンスのリストを受け取り、それらのインスタンスを繋げたインスタンスを返す。
-    """
 
     def __init__(self, x, *args):
-        """
-        引数
-            x: Nodeインスタンスのリスト
-            axis: 何次元で繋げるか
-        """
-
-        super().__init__(x)
-
-        self.axis = args[0]
-
-        # 各ノードの値を取り出してリストに追加していく
-        # TODO 最適化
-        self.output = []
-        for t in range(len(self._srcs[0])):
-            self.output.append(self._srcs[0][t].value)
-
-        # 与えられた次元で繋げる
-        self.output = np.concatenate(self.output, axis=args[0])
+        super(Sqrt, self).__init__()
+        self.register(x)
+        self.output = np.sqrt(x.value)
+    
+    def forward(self):
+        x = self.cache[0]
+        return np.sqrt(x.value)
 
     def backward(self, err_sig):
-        """
-        上層から送られてきたエラーシグナルを分割してリストの各Nodeインスタンスに送る。
-        """
+        x = self.cache[0]
+        x.acc_grad(err_sig / (2 * self.output))
 
-        for t in range(err_sig.shape[self.axis]):
-            x = np.take(err_sig, t, axis=self.axis)
-            y = np.expand_dims(x, self.axis)
-            self._srcs[0][t].acc_grad(y)
 
-class Rep(Op):
-    """
-    ある軸方向にある回数だけ同じ値を複製する
-    """
+
+################
+###  Others  ###
+################
+
+
+
+class Repeat(Op):
 
     def __init__(self, x, *args):
-        """
-        引数
-            args[0](int): どの軸方向に展開するか
-            args[1](int): 何回展開するか
-            args[2](bool): 計算後に次元を保存するか
-        """
-        axis, times, keepdims = args
-        self.output = np.repeat(x.value, times, axis=axis).astype(np.float32)
-        super(Rep, self).__init__(x, axis, times, keepdims)
+        super(Repeat, self).__init__()
+        self.register(x, *args)
+        self.output = self.forward()
+    
+    def forward(self):
+        x, axis, times, _ = self.cache
+        return np.repeat(x.value, times, axis=axis)
 
     def backward(self, err_sig):
-        x, axis, times, keepdims = self._srcs
+        x, axis, times, keepdims = self.cache
         x.acc_grad(np.mean(err_sig, axis=axis, keepdims=keepdims))
 
-class Clip(Op):
-    def __init__(self, x, *args):
-        super().__init__(x)
-        self._min_bound = args[0]
-        self._max_bound = args[1]
-        self.output = np.clip(self._srcs[0].value, self._min_bound, self._max_bound)
-
-    def backward(self, err_sig):
-        # ! `and`だとエラーが起こるので、`&`を使う。
-        _cond = (self._min_bound < self.output) & (self.output < self._max_bound)
-        self._srcs[0].acc_grad(err_sig * np.where(_cond, 1, 0))
 
 class Expand(Op):
-    """
-    新たな次元を追加する。
-    """
 
     def __init__(self, x, *args):
-        axis = args[0]
-        self.output = np.expand_dims(x.value, axis=axis)
-        super(Expand, self).__init__(x, axis)
+        super(Expand, self).__init__()
+        self.register(x, *args)
+        self.output = self.forward()
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(np.squeeze(err_sig, axis=self._srcs[1]))
+    def forward(self):
+        x, axis = self.cache 
+        return np.expand_dims(x.value, axis=axis)
+
+    def backward(self, error):
+        x, axis = self.cache
+        x.acc_grad(np.squeeze(error, axis=axis))
+
 
 class Max(Op):
-    """
-    入力が与えられたとき、指定された軸方向の最大値を返す。
-    """
 
     def __init__(self, x, *args):
-        """
-        引数
-            args[0]: どの軸方向に最大値をとるか
-        """
-        indeces = np.argmax(x.value, args[0])
-        indeces = np.expand_dims(indeces, axis=args[0])
-        self.output = np.take_along_axis(x.value, indeces, axis=args[0])
-        super(Max, self).__init__(x, indeces, *args)
+        super(Max, self).__init__()
+        self.register(x, *args)
+        self.output = self.forward()
 
-    def backward(self, err_sig):
-        dx = np.zeros(self._srcs[0].value.shape)
-        np.put_along_axis(dx, self._srcs[1], err_sig, axis=self._srcs[2])
-        self._srcs[0].acc_grad(dx)
+    def forward(self):
+        x, axis = self.cache
+        idx = np.argmax(x.value, axis=axis)
+        self.register(idx)
+        return np.max(x.value, axis=axis)
+
+    def backward(self, error):
+        x, axis, idx = self.cache
+        dx = np.zeros(x.value.shape)
+        dx[np.arange(idx.size), idx.flatten()] = error.flatten()
+        x.acc_grad(dx)
 
 
-############################
-###                      ###
-### Activation Functions ###
-###                      ###
-############################
+
+#####################
+###  Activations  ###
+#####################
+
+
 
 class Sigmoid(Op):
-    def __init__(self, x, *args):
-        super().__init__(x)
-        # オーバーフローが発生しないように、適切な値にクリッピングする。
-        alpha = 32.538776394910684
-        self._srcs[0].value = np.clip(x.value, -alpha, alpha)
-        self.output = 1. / (1. + np.exp(-self._srcs[0].value))
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig * self.output * (1. - self.output))
+    def __init__(self, x, *args):
+        super(Sigmoid, self).__init__()
+        self.register(x, 32.5387)
+        self.output = self.forward()
+
+    def forward(self):
+        x, alpha = self.cache 
+        return 1 / (1 + np.exp(-np.clip(x.value, -alpha, alpha)))
+
+    def backward(self, error):
+        x, _ = self.cache
+        x.acc_grad(error * self.output * (1 - self.output))
+
 
 class Tanh(Op):
-    def __init__(self, x, *args):
-        super().__init__(x)
-        # オーバーフローが発生しないように、適切な値にクリッピングする。
-        alpha = 32.538776394910684
-        self._srcs[0].value = np.clip(x.value, -alpha, alpha)
-        self.output = np.tanh(self._srcs[0].value)
 
-    def backward(self, err_sig):
-        denominator = (np.exp(self._srcs[0].value) + np.exp(-self._srcs[0].value)) ** 2
-        self._srcs[0].acc_grad(err_sig * 4 / denominator)
+    def __init__(self, x, *args):
+        super(Tanh, self).__init__()
+        self.register(x, 32.5387)
+        self.output = self.forward()
+
+    def forward(self):
+        x, alpha = self.cache 
+        return np.tanh(np.clip(x.value, -alpha, alpha))
+
+    def backward(self, error):
+        x, alpha = self.cache
+        z = np.clip(x.value, -alpha, alpha)
+        x.acc_grad(error * 4 / ((np.exp(z) + np.exp(-z)) ** 2))
+
 
 class ReLU(Op):
-    def __init__(self, x, *args):
-        super().__init__(x)
-        self.output = np.maximum(self._srcs[0].value, 0)
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig * (1. * (self._srcs[0].value > 0)))
+    def __init__(self, x, *args):
+        super(ReLU, self).__init__()
+        self.register(x)
+        self.output = self.forward()
+
+    def forward(self):
+        x = self.cache[0]
+        return np.maximum(0, x.value)
+
+    def backward(self, error):
+        x = self.cache[0]
+        x.acc_grad(error * (1 * (x.value > 0)))
+
 
 class LeakyReLU(Op):
-    def __init__(self, x, *args):
-        super().__init__(x)
-        self.alpha = args[0]
-        self.output = np.maximum(self._srcs[0].value, self._srcs[0].value*self.alpha)
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(err_sig * np.where(self._srcs[0].value > 0, 1, self.alpha))
+    def __init__(self, x, *args):
+        super(LeakyReLU, self).__init__()
+        self.register(x, *args)
+        self.output = self.forward()
+
+    def forward(self):
+        x, alpha = self.cache 
+        return np.maximum(x.value * alpha, x.value)
+
+    def backward(self, error):
+        x, alpha = self.cache
+        x.acc_grad(error * np.where(x.value > 0, 1, alpha))
+
 
 class SeLU(Op):
-    """
-    SeLU：
-    Self-Normalizing Neural Networksで使われる活性化関数。レイヤーの重みの平均が0、標準偏差が√(1./i)で、かつ入力の平均が0、分散が1の場合、この活性化関数はStableなAttracting Fixed Point（この場合は出力の平均が0、分散が1に近づいていく）を持つ。
-
-    元論文：
-    https://arxiv.org/abs/1706.02515
-    """
 
     def __init__(self, x, *args):
-        super().__init__(x)
-        self._alpha = 1.6732632423543772848170429916717
-        self._scale = 1.0507009873554804934193349852946
-        self.output = self._scale * np.where(
-            self._srcs[0].value >= 0., 
-            self._srcs[0].value, # 上の条件を満たす場合、y=xになる
-            self._alpha * np.exp(np.clip(self._srcs[0].value, None, 1e+2)) - self._alpha
-        )
+        super(SeLU).__init__()
+        alpha = 1.6732632423543772848170429916717
+        scale = 1.0507009873554804934193349852946
+        self.register(x, alpha, scale)
+        self.output = self.forward()
 
-    def backward(self, err_sig):
-        grad = self._scale * np.where(
-            self._srcs[0].value >= 0., 1., 
-            self._alpha * np.exp(np.clip(self._srcs[0].value, None, 1e+2))
-        )
-        self._srcs[0].acc_grad(err_sig * grad)
+    def forward(self):
+        x, alpha, scale = self.cache 
+        return scale * np.where(x.value >= 0, x.value, alpha * np.exp(x.value)) - alpha
 
-class Softmax(Op):
-    def __init__(self, x):
-        super().__init__(x)
-        self.output = self._softmax(self._srcs[0].value)
+    def backward(self, error):
+        x, alpha, scale = self.cache 
+        x.acc_grad(error * scale * np.where(x.value >= 0, 1, alpha * np.exp(x.value)))
 
-    def _softmax(self, x):
-        _exp = np.exp(x - np.max(x, axis=1, keepdims=True))
-        return _exp / np.sum(_exp, axis=1, keepdims=True)
 
-    def backward(self, err_sig):
-        # ! 基本的に推論時に使用されるので、バックワード演算は行わない。
-        raise(NotImplementedError)
 
-######################
-###                ###
-### Loss Functions ###
-###                ###
-######################
+########################
+###  Loss Functions  ###
+########################
+
+
 
 class BinaryCrossEntropy(Op):
+
     def __init__(self, x, y, *args):
-        super().__init__(x, y)
-        self.shape = self._srcs[0].value.shape
-        self._srcs[0].value = np.clip(self._srcs[0].value, 1e-12, 1-1e-12)
-        xv = self._srcs[0].value
-        yv = self._srcs[1].value
-        self.output = - yv * np.log(xv) - (1 - yv) * np.log(1 - xv)
-        self.output = np.mean(self.output)
+        super(BinaryCrossEntropy, self).__init__()
+        self.register(x, y, 1e-5)
+        self.output = self.forward()
+
+    def forward(self):
+        x, y, alpha = self.cache 
+        x.value = np.clip(x.value, alpha, 1-alpha)
+        z = -y.value * np.log(x.value) -(1 - y.value) * np.log(1 - x.value)
+        return np.mean(z)
     
-    def backward(self, err_sig):
-        shape = [1 for _ in range(len(self.shape))]
-        #shape[0] = self.shape[0]
-        err_sig = np.tile(1, shape) / self._srcs[0].value.shape[0]
+    def backward(self, error):
+        x, y, _ = self.cache 
+        shape = [1] * len(x.value.shape)
+        x.acc_grad(np.tile(1, shape) / x.value.shape[0] \
+                    * (x.value - y.value) / (x.value * (1 - x.value)))
 
-        xv = self._srcs[0].value
-        yv = self._srcs[1].value
-        self._srcs[0].acc_grad(err_sig * (xv - yv) / (xv * (1 - xv)))
 
-class SoftmaxWithCrossEntropy(Op):
+class SoftmaxWithBinaryCrossEntropy(Op):
+
     def __init__(self, x, y, *args):
-        super().__init__(x, y)
-        self._pred = self._softmax(self._srcs[0].value)
-        self._pred = np.clip(self._pred, 1e-12, 1-1e-12)
-        self.output = self._cross_entropy(self._pred, self._srcs[1].value)
-        
-    def _softmax(self, x):
-        _exp = np.exp(x - np.max(x, axis=1, keepdims=True))
-        return _exp / np.sum(_exp, axis=1, keepdims=True)
+        super(SoftmaxWithBinaryCrossEntropy, self).__init__()
+        self.register(x, y, 1e-5)
+        self.output = self.forward()
 
-    def _cross_entropy(self, x, y):
-        # ! np.logに十分に小さな値を渡すと、ゼロ除算が起こるので、np.clipを間に挟む
-        _eq = y * np.log(x) + \
-                (1. - y) * np.log(1. - x)
-        return -1. * np.mean(np.sum(_eq, axis=1, keepdims=False), axis=0, keepdims=False)
+    def forward(self):
+        x, y, alpha = self.cache
+        z = np.clip(self.softmax(x.value), alpha, 1-alpha)
+        self.register(z)
+        return self.binary_cross_entropy(z, y.value)
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(self._pred - self._srcs[1].value)
+    def softmax(self, x, axis=1):
+        z = np.exp(x - np.max(x, axis=axis, keepdims=True))
+        return z / np.sum(z, axis=axis, keepdims=True)
+
+    def binary_cross_entropy(self, x, y):
+        z = y * np.log(x) + (1 - y) * np.log(1 - x)
+        return -1 * np.mean(np.sum(z, axis=1, keepdims=False), axis=0, keepdims=False)
+
+    def backward(self, error):
+        x, y, alpha, z = self.cache
+        x.acc_grad(z - y.value)
+
 
 class MeanSquaredError(Op):
+
     def __init__(self, x, y, *args):
-        super().__init__(x, y)
-        self.output = 0.5 * np.mean((x.value-y.value)**2, keepdims=False)
+        super(MeanSquaredError, self).__init__()
+        self.register(x, y)
+        self.output = self.forward()
 
-    def backward(self, err_sig):
-        self._srcs[0].acc_grad(self._srcs[0].value-self._srcs[1].value)
+    def forward(self):
+        x, y = self.cache 
+        return 0.5 * np.mean((x.value - y.value) ** 2, keepdims=False)
 
-####################
-###              ###
-### Convolutions ###
-###              ###
-####################
+    def backward(self, error):
+        x, y = self.cache
+        x.acc_grad(x.value - y.value)
 
-class Lower(Op):
-    """
-    畳み込み演算を行列積に変換する。
-    """
 
-    def __init__(self, x, filter_size, stride=1, pad=0):
-        """
-        引数
-            x: 入力
-            filter_size: フィルターの大きさ
-            stride: 畳み込みの間隔
-            pad: パディングの大きさ
-        """
-        # 入力の形を取り出す
-        # 高さと幅は同じなので、一つだけ使う
-        N, C, S, _ = x.value.shape
 
-        # 出力の形を計算する
-        output_size = (S + 2 * pad - filter_size) // stride + 1
+######################
+###  Convolutions  ###
+######################
 
-        # 入力にパディングする
-        y = np.pad(x.value, [(0, 0), (0, 0), (pad, pad), (pad, pad)], "constant")
 
-        super(Lower, self).__init__(x, filter_size, stride, pad, output_size)
 
-        # 出力の型を用意する
-        self.output = np.zeros([N, C, filter_size, filter_size, output_size, output_size])
+class Lower(Op): # => Im2Col
 
-        # i:stops[0 or 1]:strideで各畳み込みのi行j列の値のインデックスを指定している
-        # self.output[:, :, i, j, :, :]に各畳み込みのi行j列の値の行列を代入している
-        for i, j in it.product(range(filter_size), repeat=2):
-            stops = [i + stride * output_size, j + stride * output_size]
-            self.output[:, :, i, j, :, :] = y[:, :, i:stops[0]:stride, j:stops[1]:stride]
+    def __init__(self, x, *args):
+        super(Lower, self).__init__()
+        self.register(x, *args)
+        self.output = self.forward()
 
-        self.output = self.output.transpose(0, 4, 5, 1, 2, 3).reshape(N*(output_size**2), -1)
+    def forward(self):
+        x, kernel, stride, pad = self.cache 
+        N, C, H, _ = x.value.shape
+        shape = (H + 2 * pad - kernel) // stride + 1
+        y = np.pad(x.value, [(0, 0), (0, 0), (pad, pad), (pad, pad)], "constant") 
+        z = np.zeros([N, C, kernel, kernel, shape, shape])
+        for i, j in itertools.product(range(kernel), repeat=2):
+            z[:, :, i, j, :, :] = \
+                y[:, :, i:(i+stride*shape):stride, j:(j+stride*shape):stride]
+        return z.transpose(0, 4, 5, 1, 2, 3).reshape(N * (shape ** 2), -1)
 
-    def backward(self, err_sig):
-        N, C, S, _ = self._srcs[0].value.shape
+    def backward(self, error):
+        x, kernel, stride, pad = self.cache 
+        N, C, H, _ = x.value.shape
+        shape = (H + 2 * pad - kernel) // stride + 1
+        error = error.reshape(N, shape, shape, C, kernel, kernel)
+        error = error.transpose(0, 3, 4, 5, 1, 2)
+        dx = np.zeros([N, C, H + 2 * pad + stride - 1, H + 2 * pad + stride - 1])
+        for i, j in itertools.product(range(kernel), repeat=2):
+            dx[:, :, i:(i+stride*shape):stride, j:(j+stride*shape):stride] \
+                += error[:, :, i, j, :, :]
+        x.acc_grad(dx[:, :, pad:H+pad, pad:H+pad])
 
-        # 誤差信号を行列から元の形に戻す
-        err_sig = err_sig.reshape(N, self._srcs[4], self._srcs[4], C, self._srcs[1], self._srcs[1])
-        err_sig = err_sig.transpose(0, 3, 4, 5, 1, 2)
+class Higher(Op): # => Col2Im
 
-        # 誤差信号を足し合わせる
-        dx = np.zeros([N, C, S + 2 * self._srcs[3] + self._srcs[2] - 1, S + 2 * self._srcs[3] + self._srcs[2] - 1])
-        for i, j in it.product(range(self._srcs[1]), repeat=2):
-            stops = [i + self._srcs[2] * self._srcs[4], j + self._srcs[2] * self._srcs[4]]
-            dx[:, :, i:stops[0]:self._srcs[2], j:stops[1]:self._srcs[2]] += err_sig[:, :, i, j, :, :]
-
-        self._srcs[0].acc_grad(dx[:, :, self._srcs[3]:S+self._srcs[3], self._srcs[3]:S+self._srcs[3]])
-
-class Higher(Op):
-    """
-    Lowringと逆の操作を行う
-    """
-
-    def __init__(self, x, output_size, num_in_ch, filter_size, stride=1, pad=0):
-        # Nはバッチサイズと出力のサイズの積
-        # Sはフィルターのサイズと入力のチャンネル数の積
-        N, S = x.value.shape
+    def __init__(self, x, mini_batch_size, output_size, num_in_ch, num_out_ch, filter_size, stride=1, pad=0):
+        super(Higher, self).__init__()
 
         # アウトプットの形を計算
         # --- 参考 ---
@@ -516,36 +548,42 @@ class Higher(Op):
         input_size = stride * (output_size - 1) + a + filter_size - 2 * pad
 
         # y[:, :, i, j, :, :]が各畳み込みのi行j列の要素を指すように変形
-        y = x.value.reshape(N, output_size, output_size, num_in_ch, filter_size, filter_size)
+        y = x.value.reshape(mini_batch_size, output_size, output_size, num_in_ch, filter_size, filter_size)
         y = y.transpose(0, 3, 4, 5, 1, 2)
 
         # 出力を埋める
         self.output = np.zeros(
             [
-                N, 
+                mini_batch_size, 
                 num_in_ch, 
-                input_size + 2 * pad + stride - 1, 
-                input_size + 2 * pad + stride - 1
+                input_size + 2 * pad, 
+                input_size + 2 * pad
             ]
         )
         for i, j in it.product(range(filter_size), repeat=2):
             stops = [i + stride * output_size, j + stride * output_size]
             self.output[:, :, i:stops[0]:stride, j:stops[1]:stride] += y[:, :, i, j, :, :]
 
+        self.output = self.output[:, :, pad:input_size+pad, pad:input_size+pad]
+
         # バックワード演算用に保存
         super(Higher, self).__init__(x, 
+                                     mini_batch_size,
                                      input_size,
                                      output_size,
                                      num_in_ch,
+                                     num_out_ch,
                                      filter_size,
                                      stride,
                                      pad)
 
     def backward(self, err_sig):
-        x, input_size, output_size, num_in_ch, filter_size, stride, pad = self._srcs
+        x, mini_batch_size, input_size, output_size, num_in_ch, num_out_ch, filter_size, stride, pad = self._srcs
+
+        err_sig = np.pad(err_sig, [(0, 0), (0, 0), (pad, pad), (pad, pad)], "constant")
 
         # 出力の型を用意する
-        dx = np.zeros([x.value.shape[0], num_in_ch, filter_size, filter_size, output_size, output_size])
+        dx = np.zeros([mini_batch_size, num_in_ch, filter_size, filter_size, output_size, output_size])
 
         # 通常のLoweringのように畳み込む部分を埋める
         for i, j in it.product(range(filter_size), repeat=2):
@@ -553,5 +591,5 @@ class Higher(Op):
             dx[:, :, i, j, :, :] = err_sig[:, :, i:stops[0]:stride, j:stops[1]:stride]
 
         # チャンネル数分の畳み込む部分を行ベクトルに持つ行列に変換
-        dx = dx.transpose(0, 4, 5, 1, 2, 3).reshape(x.value.shape[0]*(output_size**2), -1)
+        dx = dx.transpose(0, 4, 5, 1, 2, 3).reshape(mini_batch_size*(output_size**2), -1)
         x.acc_grad(dx)

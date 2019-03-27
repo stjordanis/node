@@ -1,19 +1,20 @@
-from . import node
-import numpy as np 
+try:
+    import cupy as np
+except:
+    import numpy as np
+
+import node.node as node
 
 class Layer(object):
 
     def __init__(self):
-
         # このフラグが立っている時に上の移動平均を更新する
         self.is_train = True 
 
     def get_parameters(self):
-
         raise(NotImplementedError)
 
-    def get_parameters(self):
-        
+    def get_parameters(self): 
         return list(self.parameters.values())
 
 class Linear(Layer):
@@ -24,17 +25,18 @@ class Linear(Layer):
     """
 
     def __init__(self, num_in_units, num_h_units):
-
         super(Linear, self).__init__()
 
         # 前のレイヤーのニューロンとの結合につけられた重みと各ニューロンのバイアスを定義する
         self.parameters = {
-            "W": node.Node(np.random.randn(num_in_units, num_h_units) * np.sqrt(1. / num_in_units)),
-            "b": node.Node(np.zeros(num_h_units))
+            "W": node.Node(np.random.randn(num_in_units, num_h_units) * np.sqrt(1. / num_in_units).astype(np.float32)),
+            "b": node.Node(np.zeros(num_h_units, dtype=np.float32))
         }
 
-    def __call__(self, x):
+    def __repr__(self):
+        return "Linear"
 
+    def __call__(self, x):
         return x.dot(self.parameters["W"]) + self.parameters["b"]
 
 class BatchNorm1D(Layer):
@@ -55,8 +57,8 @@ class BatchNorm1D(Layer):
         super(BatchNorm1D, self).__init__()
 
         self.parameters = {
-            "W": node.Node(np.random.randn(num_in_units)),
-            "b": node.Node(np.zeros(num_in_units))
+            "W": node.Node(np.random.randn(num_in_units).astype(np.float32)),
+            "b": node.Node(np.zeros(num_in_units, dtype=np.float32))
         }
 
         self.alpha = alpha
@@ -89,7 +91,7 @@ class BatchNorm1D(Layer):
 
 class BatchNorm2D(Layer):
     
-    def __init__(self, num_in_ch, alpha=0.9, eps=1e-8):
+    def __init__(self, num_in_ch, alpha=0.1, eps=1e-5):
         """
         引数
             num_in_ch: 前のレイヤーのチャンネル数
@@ -100,8 +102,8 @@ class BatchNorm2D(Layer):
         super(BatchNorm2D, self).__init__()
 
         self.parameters = {
-            "W": node.Node(np.random.randn(1, num_in_ch, 1, 1)),
-            "b": node.Node(np.zeros([1, num_in_ch, 1, 1]))
+            "W": node.Node(np.random.randn(1, num_in_ch, 1, 1).astype(np.float32)),
+            "b": node.Node(np.zeros([1, num_in_ch, 1, 1], dtype=np.float32))
         }
 
         self.alpha = alpha
@@ -111,28 +113,31 @@ class BatchNorm2D(Layer):
 
         # データセット全体の統計量をバッチごとに移動平均で計算された値で近似する
         # この値は推定時に使われる
-        self.running_mu = np.zeros(shape=[1, num_in_ch, 1, 1])
-        self.running_sigma = np.ones(shape=[1, num_in_ch, 1, 1])
+        self.running_mu = np.zeros(shape=[1, num_in_ch, 1, 1], dtype=np.float32)
+        self.running_sigma = np.ones(shape=[1, num_in_ch, 1, 1], dtype=np.float32)
 
-    def __call__(self, x):
-        
+    def __call__(self, x): 
         # 訓練時はミニバッチの統計量を使って入力を正規化する
         if self.is_train:
-            mu = x.mean(0).mean(2).mean(3)
-            sigma = (((x - mu) ** 2).mean(0).mean(2).mean(3) + self.eps).sqrt()
+            mu = np.mean(x.value, axis=(0, 2, 3), keepdims=True)
+            sigma = np.sqrt(np.mean((x.value - mu) ** 2, axis=(0, 2, 3), keepdims=True) + self.eps)
+            #sigma = ((mu ** 2).mean(3).mean(2).mean(0) + self.eps).sqrt()
 
             # 全体の統計量を更新する
-            self.running_mu = self.alpha * self.running_mu \
-                                + (1 - self.alpha) * mu.value
-            self.running_sigma = self.alpha * self.running_sigma \
-                                + (1 - self.alpha) * sigma.value
+            #self.running_mu = self.alpha * self.running_mu \
+            #                    + (1 - self.alpha) * mu.value
+            #self.running_sigma = self.alpha * self.running_sigma \
+            #                    + (1 - self.alpha) * sigma.value
 
         # 推定時は移動平均の値を使って入力を正規化する
         else:
-            mu = self.mu 
-            sigma = self.sigma
+            mu = self.running_mu 
+            sigma = self.running_sigma
 
-        return self.parameters["W"] * ((x - mu) / sigma) + self.parameters["b"]
+        return self.parameters["W"] * (x - mu) / sigma + self.parameters["b"]
+
+    def __repr__(self):
+        return "BatchNorm2D"
 
 class RecurrentCell(Layer):
     """
@@ -203,29 +208,42 @@ class Conv2D(Layer):
     各チャンネルの入力が2Dデータの場合の畳み込み演算
     """
 
-    def __init__(self, num_in_ch, num_out_ch, filter_size, stride=1, pad=0):
+    def __init__(self, num_in_ch, num_out_ch, filter_size, stride=1, pad=0, use_bias=True):
         super(Conv2D, self).__init__()
 
         self.filter_size = filter_size
         self.stride = stride 
         self.pad = pad
+        self.use_bias = use_bias
 
-        # Loweringされた行列との積をとるので、あらかじめ行列にしておく
-        self.parameters = {
-            "W": node.Node(np.random.randn(num_out_ch, num_in_ch, filter_size, filter_size)),
-            "b": node.Node(np.zeros(num_out_ch))
-        }
+        if use_bias:
+            self.parameters = {
+                "W": node.Node(np.random.randn(num_out_ch, num_in_ch, filter_size, filter_size).astype(np.float32)),
+                "b": node.Node(np.zeros(num_out_ch, dtype=np.float32))
+            }
+        
+        else:
+            self.parameters = {
+                "W": node.Node(np.random.randn(num_out_ch, num_in_ch, filter_size, filter_size)),
+            }
 
     def __call__(self, input):
         FN, _, _, _ = self.parameters["W"].value.shape
         hidden = input
         hidden = hidden.lower(self.filter_size, self.stride, self.pad)
-        hidden = hidden.dot(self.parameters["W"].reshape(FN, -1).t()) + self.parameters["b"]
+
+        # use_biasが指定されている場合、畳込みのあとにバイアスを足し合わせる
+        hidden = hidden.dot(self.parameters["W"].reshape(FN, -1).t()) 
+        if self.use_bias:
+            hidden = hidden + self.parameters["b"]
 
         # 行列を元の形に戻す
         N, C, H, W = input.value.shape
         output_size = 1 + int((H + 2 * self.pad - self.filter_size) / self.stride)
         return hidden.reshape(N, output_size, output_size, -1).transpose(0, 3, 1, 2)
+
+    def __repr__(self):
+        return "Conv2D"
 
 class ConvTranspose2D(Layer):
     """
@@ -235,14 +253,27 @@ class ConvTranspose2D(Layer):
     def __init__(self, num_in_ch, num_out_ch, filter_size, stride=1, pad=0):
         super(ConvTranspose2D, self).__init__()
 
+        self.num_in_ch = num_in_ch
+        self.num_out_ch = num_out_ch 
         self.filter_size = filter_size
         self.stride = stride 
         self.pad = pad
 
-        # 
+        # 畳み込み層と逆の操作なので、フィルターのサイズが異なる
         self.parameters = {
-            "W": node.Node(np.random.randn(num_in_ch, num_out_ch, filter_size, filter_size) * 0.001)
+            "W": node.Node(np.random.randn(num_in_ch, num_out_ch, filter_size, filter_size).astype(np.float32))
         }
+
+    def __call__(self, input):
+        N, _, H, _ = input.value.shape
+        hidden = input 
+        hidden = hidden.transpose(0, 2, 3, 1).reshape(input.value.shape[0] * (H ** 2), -1)
+        hidden = hidden.dot(self.parameters["W"].reshape(self.num_in_ch, -1))
+        hidden = hidden.higher(N, H, self.num_out_ch, self.num_in_ch, self.filter_size, self.stride, self.pad)
+        return hidden
+
+    def __repr__(self):
+        return "ConvTranspose2D"
 
 class MaxPool2D(Layer):
     """
