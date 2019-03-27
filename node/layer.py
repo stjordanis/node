@@ -9,7 +9,7 @@ class Layer(object):
 
     def __init__(self):
         # このフラグが立っている時に上の移動平均を更新する
-        self.is_train = True 
+        self.is_train = True
 
     def get_parameters(self):
         raise(NotImplementedError)
@@ -39,7 +39,7 @@ class Linear(Layer):
     def __call__(self, x):
         return x.dot(self.parameters["W"]) + self.parameters["b"]
 
-class BatchNorm1D(Layer):
+class BatchNormalization(Layer):
     """
     バッチ正則化レイヤー
 
@@ -48,13 +48,12 @@ class BatchNorm1D(Layer):
     https://arxiv.org/abs/1702.03275
     """
 
-    def __init__(self, num_in_units, alpha=0.9, eps=1e-8):
+    def __init__(self, num_in_units, alpha=0.1, eps=1e-5):
         """
         num_in_units := 前のレイヤーのユニット数
         alpha := 移動平均の更新率をコントロールするハイパーパラメーター
         """
-
-        super(BatchNorm1D, self).__init__()
+        super(BatchNormalization, self).__init__()
 
         self.parameters = {
             "W": node.Node(np.random.randn(num_in_units).astype(np.float32)),
@@ -68,76 +67,16 @@ class BatchNorm1D(Layer):
 
         # データセット全体の統計量をバッチごとに移動平均で計算された値で近似する
         # この値は推定時に使われる
-        self.mu = np.zeros(shape=[1, num_in_units])
-        self.sigma = np.ones(shape=[1, num_in_units])
+        self.running_mu = np.zeros(num_in_units, dtype=np.float32)
+        self.running_sigma = np.ones(num_in_units, dtype=np.float32)
 
-    def __call__(self, x):
-        
-        # 訓練時はミニバッチの統計量を使って入力を正規化する
-        if self.is_train:
-            _mu = x.mean()
-            _sigma = (((x - _mu) ** 2).mean() + self.eps).sqrt()
+    def __call__(self, input):
+        hidden = input
+        if hidden.value.ndim != 2:
+            hidden = hidden.transpose(0, 2, 3, 1)
+            hidden = hidden.reshape(-1, input.value.shape[1])
 
-            # 全体の統計量を更新する
-            self.mu = self.alpha * self.mu + (1 - self.alpha) * _mu.value
-            self.sigma = self.alpha * self.sigma + (1 - self.alpha) * _sigma.value
-
-        # 推定時は移動平均の値を使って入力を正規化する
-        else:
-            _mu = self.mu 
-            _sigma = self.sigma
-
-        return self.parameters["W"] * ((x - _mu) / _sigma) + self.parameters["b"]
-
-class BatchNorm2D(Layer):
-    
-    def __init__(self, num_in_ch, alpha=0.1, eps=1e-5):
-        """
-        引数
-            num_in_ch: 前のレイヤーのチャンネル数
-            alpha: 移動平均の更新率をコントロールするハイパーパラメーター
-            eps: ゼロ除算を防ぐ小さな値
-        """
-
-        super(BatchNorm2D, self).__init__()
-
-        self.parameters = {
-            "W": node.Node(np.random.randn(1, num_in_ch, 1, 1).astype(np.float32)),
-            "b": node.Node(np.zeros([1, num_in_ch, 1, 1], dtype=np.float32))
-        }
-
-        self.alpha = alpha
-
-        # 標準偏差で除算する際にゼロ除算エラーが発生しないようにする
-        self.eps = eps
-
-        # データセット全体の統計量をバッチごとに移動平均で計算された値で近似する
-        # この値は推定時に使われる
-        self.running_mu = np.zeros(shape=[1, num_in_ch, 1, 1], dtype=np.float32)
-        self.running_sigma = np.ones(shape=[1, num_in_ch, 1, 1], dtype=np.float32)
-
-    def __call__(self, x): 
-        # 訓練時はミニバッチの統計量を使って入力を正規化する
-        if self.is_train:
-            mu = np.mean(x.value, axis=(0, 2, 3), keepdims=True)
-            sigma = np.sqrt(np.mean((x.value - mu) ** 2, axis=(0, 2, 3), keepdims=True) + self.eps)
-            #sigma = ((mu ** 2).mean(3).mean(2).mean(0) + self.eps).sqrt()
-
-            # 全体の統計量を更新する
-            #self.running_mu = self.alpha * self.running_mu \
-            #                    + (1 - self.alpha) * mu.value
-            #self.running_sigma = self.alpha * self.running_sigma \
-            #                    + (1 - self.alpha) * sigma.value
-
-        # 推定時は移動平均の値を使って入力を正規化する
-        else:
-            mu = self.running_mu 
-            sigma = self.running_sigma
-
-        return self.parameters["W"] * (x - mu) / sigma + self.parameters["b"]
-
-    def __repr__(self):
-        return "BatchNorm2D"
+        return hidden.batch_normalization(self.parameters["W"], self.parameters["b"], self.eps)
 
 class RecurrentCell(Layer):
     """

@@ -58,6 +58,7 @@ def _core_broadcast(x, shape):
     for axis in range(len(shape)):
         if x.value.shape[axis] != shape[axis]:
             x = x.repeat(axis, shape[axis])
+
     return x
 
 def _get_shape(x, y):
@@ -307,6 +308,17 @@ class Node(object):
     @_single_oprand_op
     def higher(self, mini_batch_size, output_size, num_in_ch, num_out_ch, filter_size, stride=1, pad=0):
         return op.Higher(self, mini_batch_size, output_size, num_in_ch, num_out_ch, filter_size, stride, pad)
+
+
+    
+    #############################
+    ###  Batch Normalization  ###
+    #############################
+
+
+    @_single_oprand_op 
+    def batch_normalization(self, gamma, beta, eps):
+        return op.BatchNormalization(self, gamma, beta, eps)
 
     def acc_grad(self, grad):
         if not self.no_grad:

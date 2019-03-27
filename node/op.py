@@ -593,3 +593,46 @@ class Higher(Op): # => Col2Im
         # チャンネル数分の畳み込む部分を行ベクトルに持つ行列に変換
         dx = dx.transpose(0, 4, 5, 1, 2, 3).reshape(mini_batch_size*(output_size**2), -1)
         x.acc_grad(dx)
+
+
+
+#############################
+###  Batch Normalization  ###
+#############################
+
+
+
+class BatchNormalization(Op):
+
+    def __init__(self, x, gamma, beta, eps):
+        super(BatchNormalization, self).__init__()
+        self.register(x, gamma, beta, eps)
+        self.output = self.forward()
+
+    def forward(self):
+        x, gamma, beta, eps = self.cache 
+        
+        mu = np.mean(x.value, axis=0)
+        xc = x.value - mu
+        sigma = np.mean(xc ** 2, axis=0)
+        std = np.sqrt(sigma + eps)
+        xn = xc / std
+
+        self.register(xc, xn, std)
+
+        return gamma.value * (x.value - mu) / std + beta.value
+
+    def backward(self, error):
+        x, gamma, beta, eps, xc, xn, std = self.cache 
+
+        beta.acc_grad(np.mean(error, axis=0))
+        gamma.acc_grad(np.sum(xn * error, axis=0))
+
+        dxn = gamma.value * error 
+        dxc = dxn / std
+        dstd = -np.sum((dxn * xc) / (std * std), axis=0)
+        dvar = 0.5 * dstd / std 
+        dxc += (2 / x.value.shape[0]) * xc * dvar
+        dmu = np.sum(dxc , axis=0)
+
+        x.acc_grad(dxc - dmu / x.value.shape[0])
