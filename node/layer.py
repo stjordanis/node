@@ -14,7 +14,7 @@ class Layer(object):
     def get_parameters(self):
         raise(NotImplementedError)
 
-    def get_parameters(self): 
+    def get_parameters(self):
         return list(self.parameters.values())
 
 class Linear(Layer):
@@ -70,13 +70,22 @@ class BatchNormalization(Layer):
         self.running_mu = np.zeros(num_in_units, dtype=np.float32)
         self.running_sigma = np.ones(num_in_units, dtype=np.float32)
 
+    def __repr__(self):
+        return "BatchNormalization"
+
     def __call__(self, input):
         hidden = input
-        if hidden.value.ndim != 2:
+        if input.value.ndim != 2:
+            N, C, H, W = input.value.shape
             hidden = hidden.transpose(0, 2, 3, 1)
             hidden = hidden.reshape(-1, input.value.shape[1])
 
-        return hidden.batch_normalization(self.parameters["W"], self.parameters["b"], self.eps)
+        hidden = hidden.batch_normalization(self.parameters["W"], self.parameters["b"], self.eps)
+        if input.value.ndim != 2:
+        	hidden = hidden.reshape(N, H, W, C)
+        	hidden = hidden.transpose(0, 3, 1, 2)
+
+        return hidden
 
 class RecurrentCell(Layer):
     """
@@ -113,7 +122,7 @@ class RecurrentCell(Layer):
 
     def __call__(self, x, h):
 
-        y = x.dot(self.parameters["W"]) + h.dot(self.parameters["U"]) + self.parameters["b"] 
+        y = x.dot(self.parameters["W"]) + h.dot(self.parameters["U"]) + self.parameters["b"]
 
         return y.sigmoid()
 
@@ -130,11 +139,11 @@ class RecurrentLayer(RecurrentCell):
 
         seq = []
         for t in range(x.value.shape[1]):
-            y = x[:, t].dot(self.parameters["W"]) + h.dot(self.parameters["U"]) + self.parameters["b"] 
+            y = x[:, t].dot(self.parameters["W"]) + h.dot(self.parameters["U"]) + self.parameters["b"]
             h = y.sigmoid()
             seq.append(h.expand(1))
 
-        return cat(seq, axis=1) 
+        return cat(seq, axis=1)
 
 ####################
 ###              ###
@@ -151,7 +160,7 @@ class Conv2D(Layer):
         super(Conv2D, self).__init__()
 
         self.filter_size = filter_size
-        self.stride = stride 
+        self.stride = stride
         self.pad = pad
         self.use_bias = use_bias
 
@@ -160,7 +169,7 @@ class Conv2D(Layer):
                 "W": node.Node(np.random.randn(num_out_ch, num_in_ch, filter_size, filter_size).astype(np.float32)),
                 "b": node.Node(np.zeros(num_out_ch, dtype=np.float32))
             }
-        
+
         else:
             self.parameters = {
                 "W": node.Node(np.random.randn(num_out_ch, num_in_ch, filter_size, filter_size)),
@@ -172,7 +181,7 @@ class Conv2D(Layer):
         hidden = hidden.lower(self.filter_size, self.stride, self.pad)
 
         # use_biasが指定されている場合、畳込みのあとにバイアスを足し合わせる
-        hidden = hidden.dot(self.parameters["W"].reshape(FN, -1).t()) 
+        hidden = hidden.dot(self.parameters["W"].reshape(FN, -1).t())
         if self.use_bias:
             hidden = hidden + self.parameters["b"]
 
@@ -193,9 +202,9 @@ class ConvTranspose2D(Layer):
         super(ConvTranspose2D, self).__init__()
 
         self.num_in_ch = num_in_ch
-        self.num_out_ch = num_out_ch 
+        self.num_out_ch = num_out_ch
         self.filter_size = filter_size
-        self.stride = stride 
+        self.stride = stride
         self.pad = pad
 
         # 畳み込み層と逆の操作なので、フィルターのサイズが異なる
@@ -205,7 +214,7 @@ class ConvTranspose2D(Layer):
 
     def __call__(self, input):
         N, _, H, _ = input.value.shape
-        hidden = input 
+        hidden = input
         hidden = hidden.transpose(0, 2, 3, 1).reshape(input.value.shape[0] * (H ** 2), -1)
         hidden = hidden.dot(self.parameters["W"].reshape(self.num_in_ch, -1))
         hidden = hidden.higher(N, H, self.num_out_ch, self.num_in_ch, self.filter_size, self.stride, self.pad)

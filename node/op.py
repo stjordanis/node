@@ -560,25 +560,25 @@ class Higher(Op): # => Col2Im
                 input_size + 2 * pad
             ]
         )
-        for i, j in it.product(range(filter_size), repeat=2):
+        for i, j in itertools.product(range(filter_size), repeat=2):
             stops = [i + stride * output_size, j + stride * output_size]
             self.output[:, :, i:stops[0]:stride, j:stops[1]:stride] += y[:, :, i, j, :, :]
 
         self.output = self.output[:, :, pad:input_size+pad, pad:input_size+pad]
 
         # バックワード演算用に保存
-        super(Higher, self).__init__(x, 
-                                     mini_batch_size,
-                                     input_size,
-                                     output_size,
-                                     num_in_ch,
-                                     num_out_ch,
-                                     filter_size,
-                                     stride,
-                                     pad)
+        self.register(x, 
+                      mini_batch_size,
+                      input_size,
+                      output_size,
+                      num_in_ch,
+                      num_out_ch,
+                      filter_size,
+                      stride,
+                      pad)
 
     def backward(self, err_sig):
-        x, mini_batch_size, input_size, output_size, num_in_ch, num_out_ch, filter_size, stride, pad = self._srcs
+        x, mini_batch_size, input_size, output_size, num_in_ch, num_out_ch, filter_size, stride, pad = self.cache
 
         err_sig = np.pad(err_sig, [(0, 0), (0, 0), (pad, pad), (pad, pad)], "constant")
 
@@ -586,7 +586,7 @@ class Higher(Op): # => Col2Im
         dx = np.zeros([mini_batch_size, num_in_ch, filter_size, filter_size, output_size, output_size])
 
         # 通常のLoweringのように畳み込む部分を埋める
-        for i, j in it.product(range(filter_size), repeat=2):
+        for i, j in itertools.product(range(filter_size), repeat=2):
             stops = [i + stride * output_size, j + stride * output_size]
             dx[:, :, i, j, :, :] = err_sig[:, :, i:stops[0]:stride, j:stops[1]:stride]
 
