@@ -49,24 +49,21 @@ z = x + y
 
 ~~~python
 class Classifier(node.Network):
+
     def __init__(self, 
                  num_in_units, 
                  num_h_units,
                  num_out_units):
-        
-        # 基底クラスにはself.layersの全パラメータを返すメソッドget_parameters()が定義されている。
-        super().__init__()
-
-        # パラメーターを持つレイヤーはself.layersのリストの要素になる。
+  
+        # パラメーターを持つレイヤーはself.layersのリストに入れる
         self.layers = [
             node.Linear(num_in_units, num_h_units),
             node.Linear(num_h_units, num_out_units)
         ]
 
     def __call__(self, input):
+    
         # フォワード計算を定義する。
-
-        # 活性化関数はtanhを使う。
         hidden = self.layers[0](input).tanh()
         output = self.layers[1](hidden)
 
@@ -91,7 +88,7 @@ optimizer = node.SGD(classifier.get_parameters(), 0.001)
 input = node.Node(np.random.randn(1, 10))
 target = node.Node(np.random.randn(1, 10))
 prediction = classifier(input)
-loss = prediction.softmax_with_cross_entropy(target)
+loss = prediction.softmax_with_binary_cross_entropy(target)
 ~~~
 
 ### バックワード計算
@@ -107,5 +104,5 @@ loss.backward()
 バックワード計算で求めた勾配を使ってパラメータを更新したい場合、定義したオプティマイザーを呼ぶ。
 
 ~~~python
-optimizer()
+optimizer.update()
 ~~~
