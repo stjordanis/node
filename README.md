@@ -55,7 +55,7 @@ class Classifier(node.Network):
                  num_h_units,
                  num_out_units):
   
-        # パラメーターを持つレイヤーはself.layersのリストに入れる
+        # 使用すレイヤーはself.layersリストに入れる
         self.layers = [
             node.Linear(num_in_units, num_h_units),
             node.Linear(num_h_units, num_out_units)
