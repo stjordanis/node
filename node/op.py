@@ -33,8 +33,8 @@ class Add(Op):
 
     def backward(self, error):
         x, y = self.cache
-        x.acc_grad(error)
-        x.acc_grad(error)
+        x.accumulate(error)
+        x.accumulate(error)
 
 
 class Subtract(Op):
@@ -50,8 +50,8 @@ class Subtract(Op):
 
     def backward(self, error):
         x, y = self.cache 
-        x.acc_grad(error)
-        y.acc_grad(-error)
+        x.accumulate(error)
+        y.accumulate(-error)
 
 
 class Multiply(Op):
@@ -67,8 +67,8 @@ class Multiply(Op):
 
     def backward(self, error):
         x, y = self.cache
-        x.acc_grad(error * y.value)
-        y.acc_grad(error * x.value)
+        x.accumulate(error * y.value)
+        y.accumulate(error * x.value)
 
 
 class Divide(Op):
@@ -84,8 +84,8 @@ class Divide(Op):
 
     def backward(self, error):
         x, y = self.cache
-        x.acc_grad(error / y.value)
-        y.acc_grad(-error * x.value / (y.value ** 2))
+        x.accumulate(error / y.value)
+        y.accumulate(-error * x.value / (y.value ** 2))
 
 
 
@@ -108,8 +108,8 @@ class Dot(Op):
 
     def backward(self, error):
         x, y = self.cache
-        x.acc_grad(np.dot(error, y.value.T))
-        y.acc_grad(np.dot(x.value.T, error))
+        x.accumulate(np.dot(error, y.value.T))
+        y.accumulate(np.dot(x.value.T, error))
 
 
 class T(Op):
@@ -125,7 +125,7 @@ class T(Op):
 
     def backward(self, error):
         x = self.cache[0]
-        x.acc_grad(error.T)
+        x.accumulate(error.T)
 
 
 class Transpose(Op):
@@ -148,7 +148,7 @@ class Transpose(Op):
 
     def backward(self, error):
         x, _, inv = self.cache
-        x.acc_grad(error.transpose(*inv))
+        x.accumulate(error.transpose(*inv))
 
 
 class Reshape(Op):
@@ -164,7 +164,7 @@ class Reshape(Op):
 
     def backward(self, error):
         x, shape = self.cache
-        x.acc_grad(error.reshape(*x.value.shape))
+        x.accumulate(error.reshape(*x.value.shape))
 
 
 
@@ -189,7 +189,7 @@ class Mean(Op):
         x, axis = self.cache
         shape = [1] * len(x.value.shape)
         shape[axis] = x.value.shape[axis]
-        x.acc_grad(error * np.tile(1, shape) / x.value.shape[axis])
+        x.accumulate(error * np.tile(1, shape) / x.value.shape[axis])
 
 
 class Sum(Op):
@@ -207,7 +207,7 @@ class Sum(Op):
         x, axis = self.cache
         shape = [1] * len(x.value.shape)
         shape[axis] = x.value.shape[axis]
-        x.acc_grad(np.tile(error, shape))
+        x.accumulate(np.tile(error, shape))
 
 
 
@@ -230,7 +230,7 @@ class Pow(Op):
 
     def backward(self, error):
         x, y = self.cache
-        x.acc_grad(error * y * (x.value ** (y - 1)))
+        x.accumulate(error * y * (x.value ** (y - 1)))
 
 
 class Exp(Op):
@@ -246,7 +246,7 @@ class Exp(Op):
 
     def backward(self, error):
         x = self.cache[0]
-        x.acc_grad(error * self.output)
+        x.accumulate(error * self.output)
 
 
 class Log(Op):
@@ -262,7 +262,7 @@ class Log(Op):
 
     def backward(self, error):
         x = self.cache[0]
-        x.acc_grad(error / x.value)
+        x.accumulate(error / x.value)
 
 
 class Sqrt(Op):
@@ -278,7 +278,7 @@ class Sqrt(Op):
 
     def backward(self, err_sig):
         x = self.cache[0]
-        x.acc_grad(err_sig / (2 * self.output))
+        x.accumulate(err_sig / (2 * self.output))
 
 
 
@@ -301,7 +301,7 @@ class Repeat(Op):
 
     def backward(self, err_sig):
         x, axis, times, keepdims = self.cache
-        x.acc_grad(np.mean(err_sig, axis=axis, keepdims=keepdims))
+        x.accumulate(np.mean(err_sig, axis=axis, keepdims=keepdims))
 
 
 class Expand(Op):
@@ -317,7 +317,7 @@ class Expand(Op):
 
     def backward(self, error):
         x, axis = self.cache
-        x.acc_grad(np.squeeze(error, axis=axis))
+        x.accumulate(np.squeeze(error, axis=axis))
 
 
 class Max(Op):
@@ -337,7 +337,7 @@ class Max(Op):
         x, axis, idx = self.cache
         dx = np.zeros(x.value.shape)
         dx[np.arange(idx.size), idx.flatten()] = error.flatten()
-        x.acc_grad(dx)
+        x.accumulate(dx)
 
 
 
@@ -360,7 +360,7 @@ class Sigmoid(Op):
 
     def backward(self, error):
         x, _ = self.cache
-        x.acc_grad(error * self.output * (1 - self.output))
+        x.accumulate(error * self.output * (1 - self.output))
 
 
 class Tanh(Op):
@@ -377,7 +377,7 @@ class Tanh(Op):
     def backward(self, error):
         x, alpha = self.cache
         z = np.clip(x.value, -alpha, alpha)
-        x.acc_grad(error * 4 / ((np.exp(z) + np.exp(-z)) ** 2))
+        x.accumulate(error * 4 / ((np.exp(z) + np.exp(-z)) ** 2))
 
 
 class ReLU(Op):
@@ -393,7 +393,7 @@ class ReLU(Op):
 
     def backward(self, error):
         x = self.cache[0]
-        x.acc_grad(error * (1 * (x.value > 0)))
+        x.accumulate(error * (1 * (x.value > 0)))
 
 
 class LeakyReLU(Op):
@@ -409,7 +409,7 @@ class LeakyReLU(Op):
 
     def backward(self, error):
         x, alpha = self.cache
-        x.acc_grad(error * np.where(x.value > 0, 1, alpha))
+        x.accumulate(error * np.where(x.value > 0, 1, alpha))
 
 
 class SeLU(Op):
@@ -427,7 +427,7 @@ class SeLU(Op):
 
     def backward(self, error):
         x, alpha, scale = self.cache 
-        x.acc_grad(error * scale * np.where(x.value >= 0, 1, alpha * np.exp(x.value)))
+        x.accumulate(error * scale * np.where(x.value >= 0, 1, alpha * np.exp(x.value)))
 
 
 
@@ -453,7 +453,7 @@ class BinaryCrossEntropy(Op):
     def backward(self, error):
         x, y, _ = self.cache 
         shape = [1] * len(x.value.shape)
-        x.acc_grad(np.tile(1, shape) / x.value.shape[0] \
+        x.accumulate(np.tile(1, shape) / x.value.shape[0] \
                     * (x.value - y.value) / (x.value * (1 - x.value)))
 
 
@@ -480,7 +480,7 @@ class SoftmaxWithBinaryCrossEntropy(Op):
 
     def backward(self, error):
         x, y, alpha, z = self.cache
-        x.acc_grad(z - y.value)
+        x.accumulate(z - y.value)
 
 
 class MeanSquaredError(Op):
@@ -496,7 +496,7 @@ class MeanSquaredError(Op):
 
     def backward(self, error):
         x, y = self.cache
-        x.acc_grad(x.value - y.value)
+        x.accumulate(x.value - y.value)
 
 
 
@@ -519,9 +519,17 @@ class Lower(Op): # => Im2Col
         shape = (H + 2 * pad - kernel) // stride + 1
         y = np.pad(x.value, [(0, 0), (0, 0), (pad, pad), (pad, pad)], "constant") 
         z = np.zeros([N, C, kernel, kernel, shape, shape])
+
+        # サイズkのカーネルが与えられるとする。
+        # すると、z[..i,j..]には
+        # 1) 各バッチ
+        # 2) 各チャンネル
+        # 3) 各畳み込み領域
+        # においてカーネルのi行j列の値が保存される
         for i, j in itertools.product(range(kernel), repeat=2):
             z[:, :, i, j, :, :] = \
                 y[:, :, i:(i+stride*shape):stride, j:(j+stride*shape):stride]
+
         return z.transpose(0, 4, 5, 1, 2, 3).reshape(N * (shape ** 2), -1)
 
     def backward(self, error):
@@ -534,65 +542,72 @@ class Lower(Op): # => Im2Col
         for i, j in itertools.product(range(kernel), repeat=2):
             dx[:, :, i:(i+stride*shape):stride, j:(j+stride*shape):stride] \
                 += error[:, :, i, j, :, :]
-        x.acc_grad(dx[:, :, pad:H+pad, pad:H+pad])
+        x.accumulate(dx[:, :, pad:H+pad, pad:H+pad])
 
 class Higher(Op): # => Col2Im
 
-    def __init__(self, x, mini_batch_size, output_size, num_in_ch, num_out_ch, filter_size, stride=1, pad=0):
+    def __init__(self, x, *args):
+        """
+        引数
+            x                   入力
+            mini_batch_size     ミニバッチのサイズ
+            output              出力のサイズ
+            num_in_ch           入力のチャンネル数
+            kernel              カーネルのサイズ
+            stride              ストライドのサイズ
+            pad                 パッドのサイズ
+        """
         super(Higher, self).__init__()
+        self.register(x, *args)
+        self.output = self.forward()
 
-        # アウトプットの形を計算
-        # --- 参考 ---
+    def forward(self):
+        x, mini_batch_size, output, num_in_ch, kernel, stride, pad = self.cache 
+
+        # 参考
         # http://deeplearning.net/software/theano/tutorial/conv_arithmetic.html 
-        a = (output_size + 2 * pad - filter_size) % stride
-        input_size = stride * (output_size - 1) + a + filter_size - 2 * pad
+        a = (output + 2 * pad - kernel) % stride
+        input = stride * (output - 1) + a + kernel - 2 * pad
 
-        # y[:, :, i, j, :, :]が各畳み込みのi行j列の要素を指すように変形
-        y = x.value.reshape(mini_batch_size, output_size, output_size, num_in_ch, filter_size, filter_size)
-        y = y.transpose(0, 3, 4, 5, 1, 2)
+        z = x.value.reshape(mini_batch_size, 
+                            output, 
+                            output, 
+                            num_in_ch, 
+                            kernel, 
+                            kernel)
+        z = z.transpose(0, 3, 4, 5, 1, 2)
 
-        # 出力を埋める
-        self.output = np.zeros(
-            [
-                mini_batch_size, 
-                num_in_ch, 
-                input_size + 2 * pad, 
-                input_size + 2 * pad
-            ]
-        )
-        for i, j in itertools.product(range(filter_size), repeat=2):
-            stops = [i + stride * output_size, j + stride * output_size]
-            self.output[:, :, i:stops[0]:stride, j:stops[1]:stride] += y[:, :, i, j, :, :]
+        y = np.zeros([mini_batch_size, 
+                      num_in_ch, 
+                      input + 2 * pad, 
+                      input + 2 * pad])
 
-        self.output = self.output[:, :, pad:input_size+pad, pad:input_size+pad]
+        for i, j in itertools.product(range(kernel), repeat=2):
+            y[:, :, i:(i+stride*output):stride, j:(j+stride*output):stride] \
+                += z[:, :, i, j, :, :]
 
-        # バックワード演算用に保存
-        self.register(x, 
-                      mini_batch_size,
-                      input_size,
-                      output_size,
-                      num_in_ch,
-                      num_out_ch,
-                      filter_size,
-                      stride,
-                      pad)
+        return y[:, :, pad:input+pad, pad:input+pad]
 
-    def backward(self, err_sig):
-        x, mini_batch_size, input_size, output_size, num_in_ch, num_out_ch, filter_size, stride, pad = self.cache
+    def backward(self, error):
+        x, mini_batch_size, output, num_in_ch, _, kernel, stride, pad = self.cache
 
-        err_sig = np.pad(err_sig, [(0, 0), (0, 0), (pad, pad), (pad, pad)], "constant")
+        error = np.pad(error, 
+                       [(0, 0), (0, 0), (pad, pad), (pad, pad)], 
+                       "constant")
 
-        # 出力の型を用意する
-        dx = np.zeros([mini_batch_size, num_in_ch, filter_size, filter_size, output_size, output_size])
+        dx = np.zeros([mini_batch_size, 
+                       num_in_ch, 
+                       kernel, 
+                       kernel, 
+                       output, 
+                       output])
 
-        # 通常のLoweringのように畳み込む部分を埋める
-        for i, j in itertools.product(range(filter_size), repeat=2):
-            stops = [i + stride * output_size, j + stride * output_size]
-            dx[:, :, i, j, :, :] = err_sig[:, :, i:stops[0]:stride, j:stops[1]:stride]
+        for i, j in itertools.product(range(kernel), repeat=2):
+            dx[:, :, i, j, :, :] = error[:, :, i:(i+stride*output):stride, j:(j+stride*output):stride]
 
-        # チャンネル数分の畳み込む部分を行ベクトルに持つ行列に変換
-        dx = dx.transpose(0, 4, 5, 1, 2, 3).reshape(mini_batch_size*(output_size**2), -1)
-        x.acc_grad(dx)
+        dx = dx.transpose(0, 4, 5, 1, 2, 3)
+        dx = dx.reshape(mini_batch_size * (output ** 2), -1)
+        x.accumulate(dx)
 
 
 
@@ -625,8 +640,8 @@ class BatchNormalization(Op):
     def backward(self, error):
         x, gamma, beta, eps, xc, xn, std = self.cache 
 
-        beta.acc_grad(np.mean(error, axis=0))
-        gamma.acc_grad(np.sum(xn * error, axis=0))
+        beta.accumulate(np.mean(error, axis=0))
+        gamma.accumulate(np.sum(xn * error, axis=0))
 
         dxn = gamma.value * error 
         dxc = dxn / std
@@ -635,4 +650,4 @@ class BatchNormalization(Op):
         dxc += (2 / x.value.shape[0]) * xc * dvar
         dmu = np.sum(dxc , axis=0)
 
-        x.acc_grad(dxc - dmu / x.value.shape[0])
+        x.accumulate(dxc - dmu / x.value.shape[0])

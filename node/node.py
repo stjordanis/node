@@ -1,44 +1,88 @@
 try:
     import cupy as np
     DEVICE = "gpu"
-    print("GPU")
 except:
     import numpy as np
     DEVICE = "cpu"
-    print("CPU")
+
+message = "Works on {}".format(DEVICE.upper())
+print(message)
 
 import collections
 import node.op as op
 
 Pair = collections.namedtuple("Pair", ("op", "node"))
-TREE = []
+GRAPH = []
 
-CONSTRUCT_TREE = True
+# Trueの時のみ計算グラフを構築
+# 補足
+# zero_gradでコントロール
+CONSTRUCT_GRAPH = True
+
+
+
+####################
+###  Graphの操作  ###
+####################
+
+
+
 class zero_grad(object):
 
     def __enter__(self, *args):
-        global CONSTRUCT_TREE
-        CONSTRUCT_TREE = False
+        global CONSTRUCT_GRAPH
+        CONSTRUCT_GRAPH = False
 
     def __exit__(self, *args):
-        global CONSTRUCT_TREE
-        CONSTRUCT_TREE = True
+        global CONSTRUCT_GRAPH
+        CONSTRUCT_GRAPH = True
+
 
 def _add_new_pair(op, node):
-    global TREE
+    global GRAPH
 
-    if not CONSTRUCT_TREE:
+    if not CONSTRUCT_GRAPH:
         return
 
     node = Pair(op, node)
-    TREE.append(node)
+    GRAPH.append(node)
 
-def _destruct_tree():
-    global TREE 
-    TREE = TREE.__new__(list)
+
+def _destruct_graph():
+    global GRAPH 
+    GRAPH = GRAPH.__new__(list)
+
+
+def _two_oprand_op(fn):
+    def wrapper(x, y):
+        op = fn(x, y)
+        node = Node(op.output)
+        _add_new_pair(op, node)
+        return node
+    return wrapper
+
+
+def _single_oprand_op(fn):
+    def wrapper(x, *args):
+        if type(x) != Node:
+            x = _core_scaler2node(x)
+        op = fn(x, *args)
+        node = Node(op.output)
+        _add_new_pair(op, node)
+        return node
+    return wrapper
+
+
+
+###################
+###  Nodeの変形  ###
+###################
+
+
 
 def _core_scaler2node(x):
-    return Node(np.array(x), no_grad=True)
+    return Node(np.array(x), off=True)
+
 
 def _scaler2node(fn):
     def wrapper(x, y):
@@ -48,6 +92,7 @@ def _scaler2node(fn):
             y = _core_scaler2node(y)
         return fn(x, y)
     return wrapper
+
 
 def _core_broadcast(x, shape):
     # 次元数が異なる場合、少ない次元を持つ方の先頭に足りない分だけ1を追加
@@ -60,49 +105,33 @@ def _core_broadcast(x, shape):
             x = x.repeat(axis, shape[axis])
 
     return x
-
-def _get_shape(x, y):
-    return np.broadcast(x.value, y.value).shape
+    
 
 def _broadcast(fn):
     def wrapper(x, y):
         if x.value.shape != y.value.shape:
-            shape = _get_shape(x, y)
+            shape = np.broadcast(x.value, y.value).shape
             x = _core_broadcast(x, shape)
             y = _core_broadcast(y, shape)
         return fn(x, y)
     return wrapper
 
-def _two_oprand_op(fn):
-    def wrapper(x, y):
-        op = fn(x, y)
-        node = Node(op.output)
-        _add_new_pair(op, node)
-        return node
-    return wrapper
-
-def _single_oprand_op(fn):
-    def wrapper(x, *args):
-        if type(x) != Node:
-            x = _core_scaler2node(x)
-        op = fn(x, *args)
-        node = Node(op.output)
-        _add_new_pair(op, node)
-        return node
-    return wrapper
 
 class Node(object):
-    def __init__(self, value, no_grad=False):
+
+    def __init__(self, value, off=False, name=""):
         """
         引数
-            value: この変数が持つ値を表す
-            no_grad: この変数が勾配を持つかを表す
+            value  この変数が持つ値を表す
+            off    この変数が勾配を持つかを表す
+            name   このノードの名前
         """
         self.value = value.astype(np.float32)
-        self.no_grad = no_grad
+        self.off = off
+        self.name = name
 
-        # `no_grad`が真のときのみ勾配を初期化
-        if not self.no_grad:
+        # `off`が真のときのみ勾配を初期化
+        if not self.off:
             self.grad = np.zeros(value.shape)
 
 
@@ -306,8 +335,20 @@ class Node(object):
         return op.Lower(self, filter_size, stride, pad)
 
     @_single_oprand_op
-    def higher(self, mini_batch_size, output_size, num_in_ch, num_out_ch, filter_size, stride=1, pad=0):
-        return op.Higher(self, mini_batch_size, output_size, num_in_ch, num_out_ch, filter_size, stride, pad)
+    def higher(self, 
+               mini_batch_size, 
+               output, 
+               num_in_ch, 
+               kernel, 
+               stride=1, 
+               pad=0):
+        return op.Higher(self, 
+                         mini_batch_size, 
+                         output, 
+                         num_in_ch, 
+                         kernel, 
+                         stride, 
+                         pad)
 
 
     
@@ -320,29 +361,29 @@ class Node(object):
     def batch_normalization(self, gamma, beta, eps):
         return op.BatchNormalization(self, gamma, beta, eps)
 
-    def acc_grad(self, grad):
-        if not self.no_grad:
+    def accumulate(self, grad):
+        if not self.off:
             self.grad += grad
 
     def update(self, delta):
         self.value += delta
 
-    def zero_grad(self):
+    def clear(self):
         self.grad.fill(0)
 
-    def clear_tree(self):
-        others._destruct_tree()
-
-    def get_err_sig(self, shape):
-        return np.ones(shape)
-
-    def backward(self, err_sig=None):
-        for i, pair in enumerate(TREE[::-1]):
+    def backward(self, error=None):
+        for i, pair in enumerate(GRAPH[::-1]):
             if i == 0:
-                if err_sig is not None:
-                    pair.op.backward(err_sig)
+                if error is not None:
+                    pair.op.backward(error)
                 else:
-                    pair.op.backward(self.get_err_sig(self.value.shape))
+                    pair.op.backward(np.ones(self.value.shape))
             else:
                 pair.op.backward(pair.node.grad)
-        _destruct_tree()
+        _destruct_graph()
+
+    def numpy(self):
+        if hasattr(np, "asnumpy"):
+            return np.asnumpy(self.value)
+        else:
+            return self.value

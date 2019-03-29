@@ -11,8 +11,9 @@ def stack(mini_batch):
     for input, target in mini_batch:
         inputs.append(input)
         targets.append(target)
-    return (node.Node(np.array(inputs), no_grad=True), 
-            node.Node(np.array(targets), no_grad=True))
+
+    return (node.Node(np.array(inputs), off=True), 
+            node.Node(np.array(targets), off=True))
 
 class DataLoader(object):
 

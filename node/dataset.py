@@ -35,47 +35,21 @@ class Dataset(object):
 
 class MNIST(Dataset):
 
-    def __init__(self, training=True, flatten=False):
-        # trainingがTrueの場合、訓練用のデータのロードする。
-        if training:
-            paths = ["../datasets/mnist/train-images-idx3-ubyte.gz", "../datasets/mnist/train-labels-idx1-ubyte.gz"]
+    def __init__(self, train=True, flatten=False):
+        if train:
+            paths = ["../datasets/mnist/train-images-idx3-ubyte.gz", 
+                     "../datasets/mnist/train-labels-idx1-ubyte.gz"]
         else:
-            paths = ["../datasets/mnist/t10k-images-idx3-ubyte.gz", "../datasets/mnist/t10k-labels-idx1-ubyte.gz"]
+            paths = ["../datasets/mnist/t10k-images-idx3-ubyte.gz", 
+                     "../datasets/mnist/t10k-labels-idx1-ubyte.gz"]
 
-        self.x = load_mnist_images(paths[0], flatten)
-        self.y = load_mnist_labels(paths[1])
+        self.inputs = load_mnist_images(paths[0], flatten)
+        self.targets = load_mnist_labels(paths[1])
 
     def __len__(self):
-        return self.y.shape[0]
+        return self.targets.shape[0]
 
     def __getitem__(self, i):
         # ! 正解ラベルを1-hotベクトルに変換する。
-        return (self.x[i],
-                np.eye(10)[self.y[i]].reshape(10))
-
-class RandomSeq(Dataset):
-    """
-    指定された長さの乱数列を返す。教師なし問題になる。
-    """
-
-    def __init__(self, size=60000, time_len=12):
-        """
-        引数
-            size: データセットの大きさ
-            time_len: データ点の時間軸方向を長さ
-        """
-
-        # 乱数で初期化する
-        self.seqs = np.random.uniform(0, 1, [size, time_len, 1])
-
-    def __len__(self):
-
-        return self.seqs.shape[0]
-
-    def __getitem__(self, i):
-
-        return (self.seqs[i], self.seqs[i])
-
-if __name__ == "__main__":
-    mnist = MNIST(["data/train-labels-idx1-ubyte.gz",
-                   "data/train-images-idx3-ubyte.gz"])
+        return (self.inputs[i],
+                np.eye(10)[self.targets[i]].reshape(10))

@@ -1,33 +1,26 @@
 class Network(object):
 
     def __init__(self):
-
-        # このフラグが立っている場合、ドロップアウトやバッチ正則化が訓練時の動きをするようになる。
         self.is_train = True
 
-    def training(self):
-        """
-        各レイヤーを訓練モードする
-        """
-
+    def train(self):
         for layer in self.layers:
             layer.is_train = True 
 
-    def evaluation(self):
-        """
-        各レイヤーを推論モードする
-        """
-
+    def test(self):
         for layer in self.layers:
             layer.is_train = False
 
     def get_parameters(self):
-        """
-        各レイヤーのパラメーターのリストを返す
-        """
-
         parameters = []
         for layer in self.layers: 
-            parameters += layer.get_parameters()
+            if hasattr(layer, "parameters"):
+                parameters += layer.get_parameters()
 
+        # パラメータ数を記録する
+        num_parameters = 0
+        for parameter in parameters:
+            num_parameters += parameter.value.size
+        print("Has {} parameters".format(num_parameters))
+                
         return parameters
