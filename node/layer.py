@@ -45,12 +45,12 @@ class Linear(Layer):
 
 class Convolution2D(Layer):
 
-    def __init__(self, 
-                 num_in_ch, 
-                 num_out_ch, 
-                 kernel, 
-                 stride=1, 
-                 pad=0, 
+    def __init__(self,
+                 num_in_ch,
+                 num_out_ch,
+                 kernel,
+                 stride=1,
+                 pad=0,
                  use_bias=True):
         """
         引数
@@ -68,13 +68,13 @@ class Convolution2D(Layer):
         self.pad        = pad
         self.use_bias   = use_bias
 
-        self.parameters = {"W": node.Node(np.random.randn(num_out_ch, 
-                                                          num_in_ch, 
-                                                          kernel, 
+        self.parameters = {"W": node.Node(np.random.randn(num_out_ch,
+                                                          num_in_ch,
+                                                          kernel,
                                                           kernel).astype(np.float32),
                                           name="W")}
         if use_bias:
-            self.parameters["b"] = node.Node(np.zeros(num_out_ch, dtype=np.float32), 
+            self.parameters["b"] = node.Node(np.zeros(num_out_ch, dtype=np.float32),
                                              name="b")
 
     def __repr__(self):
@@ -101,11 +101,11 @@ class TransposedConvolution2D(Layer):
     # input -->       Convolution       --> output
     # input <-- Transposed  Convolution <-- output
 
-    def __init__(self, 
-                 num_in_ch, 
-                 num_out_ch, 
-                 kernel, 
-                 stride=1, 
+    def __init__(self,
+                 num_in_ch,
+                 num_out_ch,
+                 kernel,
+                 stride=1,
                  pad=0):
         """
         引数
@@ -123,9 +123,9 @@ class TransposedConvolution2D(Layer):
         self.stride     = stride
         self.pad        = pad
 
-        self.parameters = {"W": node.Node(np.random.randn(num_in_ch, 
-                                                          num_out_ch, 
-                                                          kernel, 
+        self.parameters = {"W": node.Node(np.random.randn(num_in_ch,
+                                                          num_out_ch,
+                                                          kernel,
                                                           kernel).astype(np.float32),
                                           name="W")}
 
@@ -171,7 +171,7 @@ class MaxPooling2D(Layer):
 
 class BatchNormalization(Layer):
 
-    def __init__(self, num_in_units, alpha=0.1, eps=1e-5):
+    def __init__(self, num_in_units, alpha=0.9, eps=1e-5):
         """
         引数
             num_in_units   ユニット数(入力が4Dの時はチャンネル数)
@@ -189,8 +189,8 @@ class BatchNormalization(Layer):
         self.eps = eps
 
         # データセット全体の統計量をバッチごとに移動平均で計算された値で近似する
-        self.running_mu = np.zeros(num_in_units, dtype=np.float32)
-        self.running_sigma = np.ones(num_in_units, dtype=np.float32)
+        self.running_mu = node.Node(np.zeros(num_in_units, dtype=np.float32))
+        self.running_var = node.Node(np.ones(num_in_units, dtype=np.float32))
 
     def __repr__(self):
         return "BatchNormalization"
@@ -203,8 +203,14 @@ class BatchNormalization(Layer):
             hidden = hidden.transpose(0, 2, 3, 1)
             hidden = hidden.reshape(-1, input.value.shape[1])
 
-        hidden = hidden.batch_normalization(self.parameters["W"], self.parameters["b"], self.eps)
-        
+        hidden = hidden.batch_normalization(self.parameters["W"],
+                                            self.parameters["b"],
+                                            self.eps,
+                                            self.is_train,
+                                            self.running_mu,
+                                            self.running_var,
+                                            self.alpha)
+
         if input.value.ndim != 2:
         	hidden = hidden.reshape(N, H, W, C)
         	hidden = hidden.transpose(0, 3, 1, 2)

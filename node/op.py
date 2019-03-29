@@ -45,11 +45,11 @@ class Subtract(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, y = self.cache 
+        x, y = self.cache
         return x.value - y.value
 
     def backward(self, error):
-        x, y = self.cache 
+        x, y = self.cache
         x.accumulate(error)
         y.accumulate(-error)
 
@@ -62,7 +62,7 @@ class Multiply(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, y = self.cache 
+        x, y = self.cache
         return x.value * y.value
 
     def backward(self, error):
@@ -79,7 +79,7 @@ class Divide(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, y = self.cache 
+        x, y = self.cache
         return x.value / y.value
 
     def backward(self, error):
@@ -103,7 +103,7 @@ class Dot(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, y = self.cache 
+        x, y = self.cache
         return np.dot(x.value, y.value)
 
     def backward(self, error):
@@ -136,7 +136,7 @@ class Transpose(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, permutation = self.cache 
+        x, permutation = self.cache
 
         # 逆置き換えを計算
         inv = [0] * len(permutation)
@@ -144,7 +144,7 @@ class Transpose(Op):
             inv[j] = i
 
         self.register(inv)
-        return x.value.transpose(*permutation) 
+        return x.value.transpose(*permutation)
 
     def backward(self, error):
         x, _, inv = self.cache
@@ -155,7 +155,7 @@ class Reshape(Op):
 
     def __init__(self, x, *args):
         super(Reshape, self).__init__()
-        self.register(x, *args) 
+        self.register(x, *args)
         self.output = self.forward()
 
     def forward(self):
@@ -200,7 +200,7 @@ class Sum(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, axis = self.cache 
+        x, axis = self.cache
         return np.sum(x.value, axis=axis, keepdims=True)
 
     def backward(self, error):
@@ -225,7 +225,7 @@ class Pow(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, y = self.cache 
+        x, y = self.cache
         return x.value ** y
 
     def backward(self, error):
@@ -271,7 +271,7 @@ class Sqrt(Op):
         super(Sqrt, self).__init__()
         self.register(x)
         self.output = np.sqrt(x.value)
-    
+
     def forward(self):
         x = self.cache[0]
         return np.sqrt(x.value)
@@ -294,7 +294,7 @@ class Repeat(Op):
         super(Repeat, self).__init__()
         self.register(x, *args)
         self.output = self.forward()
-    
+
     def forward(self):
         x, axis, times, _ = self.cache
         return np.repeat(x.value, times, axis=axis)
@@ -312,7 +312,7 @@ class Expand(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, axis = self.cache 
+        x, axis = self.cache
         return np.expand_dims(x.value, axis=axis)
 
     def backward(self, error):
@@ -355,7 +355,7 @@ class Sigmoid(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, alpha = self.cache 
+        x, alpha = self.cache
         return 1 / (1 + np.exp(-np.clip(x.value, -alpha, alpha)))
 
     def backward(self, error):
@@ -371,7 +371,7 @@ class Tanh(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, alpha = self.cache 
+        x, alpha = self.cache
         return np.tanh(np.clip(x.value, -alpha, alpha))
 
     def backward(self, error):
@@ -404,7 +404,7 @@ class LeakyReLU(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, alpha = self.cache 
+        x, alpha = self.cache
         return np.maximum(x.value * alpha, x.value)
 
     def backward(self, error):
@@ -422,11 +422,11 @@ class SeLU(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, alpha, scale = self.cache 
+        x, alpha, scale = self.cache
         return scale * np.where(x.value >= 0, x.value, alpha * np.exp(x.value)) - alpha
 
     def backward(self, error):
-        x, alpha, scale = self.cache 
+        x, alpha, scale = self.cache
         x.accumulate(error * scale * np.where(x.value >= 0, 1, alpha * np.exp(x.value)))
 
 
@@ -445,13 +445,13 @@ class BinaryCrossEntropy(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, y, alpha = self.cache 
+        x, y, alpha = self.cache
         x.value = np.clip(x.value, alpha, 1-alpha)
         z = -y.value * np.log(x.value) -(1 - y.value) * np.log(1 - x.value)
         return np.mean(z)
-    
+
     def backward(self, error):
-        x, y, _ = self.cache 
+        x, y, _ = self.cache
         shape = [1] * len(x.value.shape)
         x.accumulate(np.tile(1, shape) / x.value.shape[0] \
                     * (x.value - y.value) / (x.value * (1 - x.value)))
@@ -491,7 +491,7 @@ class MeanSquaredError(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, y = self.cache 
+        x, y = self.cache
         return 0.5 * np.mean((x.value - y.value) ** 2, keepdims=False)
 
     def backward(self, error):
@@ -514,10 +514,10 @@ class Lower(Op): # => Im2Col
         self.output = self.forward()
 
     def forward(self):
-        x, kernel, stride, pad = self.cache 
+        x, kernel, stride, pad = self.cache
         N, C, H, _ = x.value.shape
         shape = (H + 2 * pad - kernel) // stride + 1
-        y = np.pad(x.value, [(0, 0), (0, 0), (pad, pad), (pad, pad)], "constant") 
+        y = np.pad(x.value, [(0, 0), (0, 0), (pad, pad), (pad, pad)], "constant")
         z = np.zeros([N, C, kernel, kernel, shape, shape])
 
         # サイズkのカーネルが与えられるとする。
@@ -533,7 +533,7 @@ class Lower(Op): # => Im2Col
         return z.transpose(0, 4, 5, 1, 2, 3).reshape(N * (shape ** 2), -1)
 
     def backward(self, error):
-        x, kernel, stride, pad = self.cache 
+        x, kernel, stride, pad = self.cache
         N, C, H, _ = x.value.shape
         shape = (H + 2 * pad - kernel) // stride + 1
         error = error.reshape(N, shape, shape, C, kernel, kernel)
@@ -562,24 +562,24 @@ class Higher(Op): # => Col2Im
         self.output = self.forward()
 
     def forward(self):
-        x, mini_batch_size, output, num_in_ch, kernel, stride, pad = self.cache 
+        x, mini_batch_size, output, num_in_ch, kernel, stride, pad = self.cache
 
         # 参考
-        # http://deeplearning.net/software/theano/tutorial/conv_arithmetic.html 
+        # http://deeplearning.net/software/theano/tutorial/conv_arithmetic.html
         a = (output + 2 * pad - kernel) % stride
         input = stride * (output - 1) + a + kernel - 2 * pad
 
-        z = x.value.reshape(mini_batch_size, 
-                            output, 
-                            output, 
-                            num_in_ch, 
-                            kernel, 
+        z = x.value.reshape(mini_batch_size,
+                            output,
+                            output,
+                            num_in_ch,
+                            kernel,
                             kernel)
         z = z.transpose(0, 3, 4, 5, 1, 2)
 
-        y = np.zeros([mini_batch_size, 
-                      num_in_ch, 
-                      input + 2 * pad, 
+        y = np.zeros([mini_batch_size,
+                      num_in_ch,
+                      input + 2 * pad,
                       input + 2 * pad])
 
         for i, j in itertools.product(range(kernel), repeat=2):
@@ -591,15 +591,15 @@ class Higher(Op): # => Col2Im
     def backward(self, error):
         x, mini_batch_size, output, num_in_ch, _, kernel, stride, pad = self.cache
 
-        error = np.pad(error, 
-                       [(0, 0), (0, 0), (pad, pad), (pad, pad)], 
+        error = np.pad(error,
+                       [(0, 0), (0, 0), (pad, pad), (pad, pad)],
                        "constant")
 
-        dx = np.zeros([mini_batch_size, 
-                       num_in_ch, 
-                       kernel, 
-                       kernel, 
-                       output, 
+        dx = np.zeros([mini_batch_size,
+                       num_in_ch,
+                       kernel,
+                       kernel,
+                       output,
                        output])
 
         for i, j in itertools.product(range(kernel), repeat=2):
@@ -618,35 +618,55 @@ class Higher(Op): # => Col2Im
 
 
 class BatchNormalization(Op):
+    # 参考
+    # https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py
 
-    def __init__(self, x, gamma, beta, eps):
+    def __init__(self, x, *args):
+        """
+        引数
+            x: 入力
+            gamma           正規化後の値をスケールするパラメーター
+            beta            正規化後の値をシフトするパラメーター
+            eps             ゼロ除算を防ぐための値
+            is_train        Trueならrunning_meanとrunning_varの値を更新
+            running_mean
+            running_var
+            alpha
+        """
         super(BatchNormalization, self).__init__()
-        self.register(x, gamma, beta, eps)
+        self.register(x, *args)
         self.output = self.forward()
 
     def forward(self):
-        x, gamma, beta, eps = self.cache 
-        
-        mu = np.mean(x.value, axis=0)
-        xc = x.value - mu
-        sigma = np.mean(xc ** 2, axis=0)
-        std = np.sqrt(sigma + eps)
-        xn = xc / std
+        x, gamma, beta, eps, is_train, running_mean, running_var, alpha = self.cache
 
-        self.register(xc, xn, std)
+        if is_train:
+            mu = np.mean(x.value, axis=0)
+            xc = x.value - mu
+            var = np.mean(xc ** 2, axis=0)
+            std = np.sqrt(var + eps)
+            xn = xc / std
+            self.register(xc, xn, std)
+
+            running_mean.value = alpha * running_mean.value + (1 - alpha) * mu
+            running_var.value = alpha * running_var.value + (1 - alpha) * var
+
+        else:
+            mu = running_mean.value
+            std = np.sqrt(running_var.value + eps)
 
         return gamma.value * (x.value - mu) / std + beta.value
 
     def backward(self, error):
-        x, gamma, beta, eps, xc, xn, std = self.cache 
+        x, gamma, beta, eps, _, _, _, _, xc, xn, std = self.cache
 
         beta.accumulate(np.mean(error, axis=0))
         gamma.accumulate(np.sum(xn * error, axis=0))
 
-        dxn = gamma.value * error 
+        dxn = gamma.value * error
         dxc = dxn / std
         dstd = -np.sum((dxn * xc) / (std * std), axis=0)
-        dvar = 0.5 * dstd / std 
+        dvar = 0.5 * dstd / std
         dxc += (2 / x.value.shape[0]) * xc * dvar
         dmu = np.sum(dxc , axis=0)
 

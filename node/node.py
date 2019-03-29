@@ -49,7 +49,7 @@ def _add_new_pair(op, node):
 
 
 def _destruct_graph():
-    global GRAPH 
+    global GRAPH
     GRAPH = GRAPH.__new__(list)
 
 
@@ -96,7 +96,7 @@ def _scaler2node(fn):
 
 def _core_broadcast(x, shape):
     # 次元数が異なる場合、少ない次元を持つ方の先頭に足りない分だけ1を追加
-    for axis in range(len(shape) - len(x.value.shape)): 
+    for axis in range(len(shape) - len(x.value.shape)):
         x = x.expand(0)
 
     # 各次元を最大値に合わせる
@@ -105,7 +105,7 @@ def _core_broadcast(x, shape):
             x = x.repeat(axis, shape[axis])
 
     return x
-    
+
 
 def _broadcast(fn):
     def wrapper(x, y):
@@ -214,7 +214,7 @@ class Node(object):
     def reshape(self, *shape):
         return op.Reshape(self, shape)
 
-    
+
 
     ####################
     ###  Mean / Sum  ###
@@ -230,7 +230,7 @@ class Node(object):
     def sum(self, axis=0):
         return op.Sum(self, axis)
 
-    
+
 
     ####################
     ###  Mean / Sum  ###
@@ -255,7 +255,7 @@ class Node(object):
         return op.Sqrt(self)
 
 
-    
+
     ################
     ###  Others  ###
     ################
@@ -335,31 +335,45 @@ class Node(object):
         return op.Lower(self, filter_size, stride, pad)
 
     @_single_oprand_op
-    def higher(self, 
-               mini_batch_size, 
-               output, 
-               num_in_ch, 
-               kernel, 
-               stride=1, 
+    def higher(self,
+               mini_batch_size,
+               output,
+               num_in_ch,
+               kernel,
+               stride=1,
                pad=0):
-        return op.Higher(self, 
-                         mini_batch_size, 
-                         output, 
-                         num_in_ch, 
-                         kernel, 
-                         stride, 
+        return op.Higher(self,
+                         mini_batch_size,
+                         output,
+                         num_in_ch,
+                         kernel,
+                         stride,
                          pad)
 
 
-    
+
     #############################
     ###  Batch Normalization  ###
     #############################
 
 
-    @_single_oprand_op 
-    def batch_normalization(self, gamma, beta, eps):
-        return op.BatchNormalization(self, gamma, beta, eps)
+    @_single_oprand_op
+    def batch_normalization(self,
+                            gamma,
+                            beta,
+                            eps,
+                            is_train,
+                            running_mu,
+                            running_var,
+                            alpha):
+        return op.BatchNormalization(self,
+                                     gamma,
+                                     beta,
+                                     eps,
+                                     is_train,
+                                     running_mu,
+                                     running_var,
+                                     alpha)
 
     def accumulate(self, grad):
         if not self.off:
@@ -383,7 +397,4 @@ class Node(object):
         _destruct_graph()
 
     def numpy(self):
-        if hasattr(np, "asnumpy"):
-            return np.asnumpy(self.value)
-        else:
-            return self.value
+        return np.asnumpy(self.value)
