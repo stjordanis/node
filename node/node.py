@@ -55,9 +55,9 @@ def _destruct_graph():
 
 def _two_oprand_op(fn):
     def wrapper(x, y):
-        op = fn(x, y)
-        node = Node(op.output)
-        _add_new_pair(op, node)
+        z = fn(x, y)
+        node = Node(z.output)
+        _add_new_pair(z, node)
         return node
     return wrapper
 
@@ -66,9 +66,9 @@ def _single_oprand_op(fn):
     def wrapper(x, *args):
         if type(x) != Node:
             x = _core_scaler2node(x)
-        op = fn(x, *args)
-        node = Node(op.output)
-        _add_new_pair(op, node)
+        y = fn(x, *args)
+        node = Node(y.output)
+        _add_new_pair(y, node)
         return node
     return wrapper
 
@@ -398,3 +398,17 @@ class Node(object):
 
     def numpy(self):
         return np.asnumpy(self.value)
+
+
+
+################
+###  Others  ###
+################
+
+
+
+def concatenate(x, axis=0):
+    y = op.Concatenate(x, axis)
+    node = Node(y.output)
+    _add_new_pair(y, node)
+    return node

@@ -340,6 +340,30 @@ class Max(Op):
         x.accumulate(dx)
 
 
+class Concatenate(Op):
+
+    def __init__(self, x, *args):
+        """
+        * 引数
+            x       Nodeインスタンスのリスト
+            axis    何次元で繋げるか
+        """
+        super(Concatenate, self).__init__()
+        self.register(x, *args)
+        self.output = self.forward()
+
+    def forward(self):
+        x, axis = self.cache 
+        return np.concatenate([x[i].value for i in range(len(x))], axis=axis)
+
+    def backward(self, error):
+        x, axis = self.cache
+        for i in range(error.shape[axis]):
+            dx = np.take(error, i, axis=axis)
+            dx = np.expand_dims(dx, axis=axis)
+            x[t].acc_grad(dx)
+
+
 
 #####################
 ###  Activations  ###
@@ -548,7 +572,7 @@ class Higher(Op): # => Col2Im
 
     def __init__(self, x, *args):
         """
-        引数
+        * 引数
             x                   入力
             mini_batch_size     ミニバッチのサイズ
             output              出力のサイズ
