@@ -28,7 +28,10 @@ class SGD(Optimizer):
 
     def update(self):
         for i, parameter in enumerate(self.parameters):
-            delta = -self.learning_rate * parameter.grad -self.learning_rate * self.decay * parameter.value
+            delta = -self.learning_rate * parameter.grad
+            if self.decay:
+                if parameter.name == "W":
+                    delta = delta -self.eta * self.decay * (parameter.value)
             self.parameters[i].update(delta)
 
     def clear(self):

@@ -14,13 +14,14 @@ class Network(object):
     def get_parameters(self):
         parameters = []
         for layer in self.layers: 
-            if hasattr(layer, "parameters"):
-                parameters += layer.get_parameters()
+            parameters += layer.get_parameters()
 
         # パラメータ数を記録する
-        num_parameters = 0
+        self.num_parameters = 0
         for parameter in parameters:
-            num_parameters += parameter.value.size
-        print("Has {} parameters".format(num_parameters))
+            self.num_parameters += parameter.value.size
                 
         return parameters
+
+    def get_num_parameters(self):
+        return self.num_parameters

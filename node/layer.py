@@ -150,6 +150,8 @@ class MaxPooling2D(Layer):
         self.stride = stride
         self.pad    = pad
 
+        self.parameters = {}
+
     def __call__(self, input):
         hidden = input
         hidden = hidden.lower(self.kernel, self.stride, self.pad)
@@ -163,9 +165,9 @@ class MaxPooling2D(Layer):
 
 
 
-################
-###  Others  ###
-################
+########################
+###  Normalizations  ###
+########################
 
 
 
@@ -188,7 +190,6 @@ class BatchNormalization(Layer):
         self.alpha = alpha
         self.eps = eps
 
-        # データセット全体の統計量をバッチごとに移動平均で計算された値で近似する
         self.running_mu = node.Node(np.zeros(num_in_units, dtype=np.float32))
         self.running_var = node.Node(np.ones(num_in_units, dtype=np.float32))
 
@@ -216,3 +217,14 @@ class BatchNormalization(Layer):
         	hidden = hidden.transpose(0, 3, 1, 2)
 
         return hidden
+
+
+class GroupNormalization(Layer):
+    """
+    Used when mini-batch size is not sufficient to compute statistics
+
+    * Reference
+    https://arxiv.org/abs/1803.08494
+    """
+    def __repr__(self):
+        return "GroupNormalization"

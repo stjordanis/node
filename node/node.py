@@ -397,7 +397,10 @@ class Node(object):
         _destruct_graph()
 
     def numpy(self):
-        return np.asnumpy(self.value)
+        if DEVICE == "gpu":
+            return np.asnumpy(self.value)
+        else:
+            return self.value
 
 
 

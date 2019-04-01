@@ -358,10 +358,9 @@ class Concatenate(Op):
 
     def backward(self, error):
         x, axis = self.cache
-        for i in range(error.shape[axis]):
-            dx = np.take(error, i, axis=axis)
-            dx = np.expand_dims(dx, axis=axis)
-            x[t].acc_grad(dx)
+        dxs = np.split(error, np.cumsum([x[i].value.shape[axis] for i in range(len(x)-1)]), axis=axis)
+        for i, dx in enumerate(dxs):
+            x[i].accumulate(dx)
 
 
 
