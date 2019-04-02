@@ -5,25 +5,32 @@ except:
     import numpy as np
     DEVICE = "cpu"
 
-message = "Works on {}".format(DEVICE.upper())
+message = "Mode: {}".format(DEVICE.upper())
 print(message)
 
 import collections
 import node.op as op
 
+
+
+# Operation instance (Op in op.py) which has info to compute backward operation and node (
+# Node in this file) instance which has the result of the operation are saved in GRAPH.
+#
+# Example -- In Feed Forward Computation
+#
+# In: c = a + b     Out: GRAPH = [Pair(Add, c)]
+# In: f = d * e     Out: GRAPH = [Pair(Add, c), Pair(Mul, f)]
 Pair = collections.namedtuple("Pair", ("op", "node"))
 GRAPH = []
 
-# Trueの時のみ計算グラフを構築
-# 補足
-# zero_gradでコントロール
+# A pair of Op and Node is added to GRAPH if True
 CONSTRUCT_GRAPH = True
 
 
 
-####################
-###  Graphの操作  ###
-####################
+#########################
+###  Graph Operation  ###
+#########################
 
 
 
@@ -54,8 +61,9 @@ def _destruct_graph():
 
 
 def _two_oprand_op(fn):
-    def wrapper(x, y):
-        z = fn(x, y)
+    # Wrapper for operations which take 2 inputs i.e. Add, Subtract and so on.
+    def wrapper(x, y, *args):
+        z = fn(x, y, *args)
         node = Node(z.output)
         _add_new_pair(z, node)
         return node
@@ -63,6 +71,7 @@ def _two_oprand_op(fn):
 
 
 def _single_oprand_op(fn):
+    # When constant is passed, it is needed to be converted to node.
     def wrapper(x, *args):
         if type(x) != Node:
             x = _core_scaler2node(x)
@@ -74,9 +83,9 @@ def _single_oprand_op(fn):
 
 
 
-###################
-###  Nodeの変形  ###
-###################
+########################
+###  Node Operation  ###
+########################
 
 
 
@@ -95,11 +104,13 @@ def _scaler2node(fn):
 
 
 def _core_broadcast(x, shape):
-    # 次元数が異なる場合、少ない次元を持つ方の先頭に足りない分だけ1を追加
+    # It comes with to numpy broadcast rule: add 1 to the lead
+    # Example -- shape is (1, 32) and x shape is (32)
+    # x shape becomes (1, 32)
     for axis in range(len(shape) - len(x.value.shape)):
         x = x.expand(0)
 
-    # 各次元を最大値に合わせる
+    # Another numpy rule: adjust each dimension to shape
     for axis in range(len(shape)):
         if x.value.shape[axis] != shape[axis]:
             x = x.repeat(axis, shape[axis])
@@ -121,16 +132,15 @@ class Node(object):
 
     def __init__(self, value, off=False, name=""):
         """
-        引数
-            value  この変数が持つ値を表す
-            off    この変数が勾配を持つかを表す
-            name   このノードの名前
+        * Argument
+            value  the value of node
+            off    self.grad is initialized only if off = True
+            name   the name of node
         """
         self.value = value.astype(np.float32)
         self.off = off
         self.name = name
 
-        # `off`が真のときのみ勾配を初期化
         if not self.off:
             self.grad = np.zeros(value.shape)
 
@@ -140,55 +150,60 @@ class Node(object):
     ###  Add / Subtract / Multiply / Divide  ###
     ############################################
 
+    # NOTE
+    # 左に__add__が定義されたインスタンスがあり、__add__で右のインスタンスの__radd__を呼ば
+    # ないような実装の場合、エラーが発生するので、左にNodeインスタンス、右に別のインスタン
+    # スを置くようにする(__add__が優先される)。
 
 
-    @_scaler2node
-    @_broadcast
-    @_two_oprand_op
-    def __add__(self, x):
-        return op.Add(self, x)
-
-    @_scaler2node
-    @_broadcast
-    @_two_oprand_op
-    def __radd__(self, x):
-        return op.Add(x, self)
 
     @_scaler2node
     @_broadcast
     @_two_oprand_op
-    def __sub__(self, x):
-        return op.Subtract(self, x)
+    def __add__(self, x, *args):
+        return op.Add(self, x, *args)
 
     @_scaler2node
     @_broadcast
     @_two_oprand_op
-    def __rsub__(self, x):
-        return op.Subtract(x, self)
+    def __radd__(self, x, *args):
+        return op.Add(x, self, *args)
 
     @_scaler2node
     @_broadcast
     @_two_oprand_op
-    def __mul__(self, x):
-        return op.Multiply(self, x)
+    def __sub__(self, x, *args):
+        return op.Subtract(self, x, *args)
 
     @_scaler2node
     @_broadcast
     @_two_oprand_op
-    def __rmul__(self, x):
-        return op.Multiply(x, self)
+    def __rsub__(self, x, *args):
+        return op.Subtract(x, self, *args)
 
     @_scaler2node
     @_broadcast
     @_two_oprand_op
-    def __truediv__(self, x):
-        return op.Divide(self, x)
+    def __mul__(self, x, *args):
+        return op.Multiply(self, x, *args)
 
     @_scaler2node
     @_broadcast
     @_two_oprand_op
-    def __rtruediv__(self, x):
-        return op.Divide(x, self)
+    def __rmul__(self, x, *args):
+        return op.Multiply(x, self, *args)
+
+    @_scaler2node
+    @_broadcast
+    @_two_oprand_op
+    def __truediv__(self, x, *args):
+        return op.Divide(self, x, *args)
+
+    @_scaler2node
+    @_broadcast
+    @_two_oprand_op
+    def __rtruediv__(self, x, *args):
+        return op.Divide(x, self, *args)
 
 
 
@@ -199,8 +214,8 @@ class Node(object):
 
 
     @_two_oprand_op
-    def dot(self, x):
-        return op.Dot(self, x)
+    def dot(self, x, *args):
+        return op.Dot(self, x, *args)
 
     @_single_oprand_op
     def t(self):
