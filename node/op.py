@@ -1,10 +1,7 @@
 try:
     import cupy as np
-    import numpy
-    DEVICE = "gpu"
 except:
     import numpy as np
-    DEVICE = "cpu"
 
 import itertools
 
@@ -356,20 +353,12 @@ class Concatenate(Op):
         self.output = self.forward()
 
     def forward(self):
-        x, axis = self.cache
+        x, axis = self.cache 
         return np.concatenate([x[i].value for i in range(len(x))], axis=axis)
 
     def backward(self, error):
         x, axis = self.cache
-
-        # numpyとcupyで挙動が異なる
-        # cupy.cumsum --> 入力がリストだとエラーになる
-        # cupy.split --> インデックスデータをCPUに移す必要がある
-        if DEVICE == "gpu":
-            dxs = np.split(error, numpy.cumsum([x[i].value.shape[axis] for i in range(len(x)-1)]), axis=axis)
-        else:
-            dxs = np.split(error, np.cumsum([x[i].value.shape[axis] for i in range(len(x)-1)]), axis=axis)
-
+        dxs = np.split(error, np.cumsum([x[i].value.shape[axis] for i in range(len(x)-1)]), axis=axis)
         for i, dx in enumerate(dxs):
             x[i].accumulate(dx)
 
@@ -541,6 +530,8 @@ class MeanSquaredError(Op):
 
 
 class Lower(Op): # => Im2Col
+    # 参考
+    # https://github.com/oreilly-japan/deep-learning-from-scratch/blob/master/common/layers.py
 
     def __init__(self, x, *args):
         super(Lower, self).__init__()
