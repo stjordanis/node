@@ -1,51 +1,109 @@
-# DL勉強用のライブラリ
+# Minimum Implementation of Automatic Differentiation for Deep Learning
 
-## 使い方
+## Requirment
+- Numpy  
+- CuPy (Optional)
 
-以下ではこれらのライブラリをインポートしていると仮定する。
+## How to use
+
+### Basic Usage
+You can use automatic differentiation on Node objects (defined in node/node.py) easily in the same way to use python built-in numerical objects or numpy arrays.
+
+Node object is initialized by passing a numpy array (list is not supported). 
 
 ~~~python
 import node
 import numpy as np
+x = node.Node(np.array([1,2,3,4,5]))
 ~~~
 
-### 変数の作成方法
+And if you want to compute on GPU, pass a cupy array (when node library is imported, it prints on what device computation is processed).
 
-3x3の乱数行列変数xを作成する。
+~~~python
+import node
+import cupy
+x = node.Node(cupy.array([1,2,3,4,5]))
+~~~
+
+Numerical operations on Node object are defined in node/op.py and can be used in the same way to python built-in numerical objects or numpy arrays. Values Node objects have are accessed through value property.
 
 ~~~python
 x = node.Node(np.random.randn(3, 3))
-~~~
-
-### 変数が持つ値の確認方法
-
-変数が持つ値を確認するにはvalueプロパティを使う。
-
-~~~python
-print(x.value)
-~~~
-
-### 演算
-
-変数同士の演算は普通に行う。
-
-~~~python
 y = node.Node(np.random.randn(3, 3))
 z = x + y
+print(z.value)
+>>> array([[ 0.1901759 , -1.3383007 , -0.43394455],
+>>>        [-0.3760382 , -0.14090723, -1.5118892 ],
+>>>        [ 1.9656961 , -0.37430343, -0.4439283 ]], dtype=float32)
 ~~~
 
-### ブロードキャスト
+Basic operations are supported 
 
-ブロードキャストのルールはnumpyと同じ。
+- Addition / Subtraction / Multiplication / Division
+- Dot product
+- Matrix Transformation (Transpose / Reshape / Expand /...) 
+- Mean / Summation
+- Pow / Log / Sqrt
+- Max
+- ...
+
+Element-wise activation functions can be used as a method of Node object.
 
 ~~~python
-y = node.Node(np.random.randn(3))
-z = x + y
+x = node.Node(np.random.randn(3, 3))
+y = x.sigmoid()
 ~~~
 
-## ニューラルネットワークの定義
+Basic activations are supported (defined in node/op.py).
 
-新たなニューラルネットワークを定義するには、node.Networkクラスを継承して__call__メソッドを定義する。
+- Sigmoid
+- Tanh
+- Softmax
+- ReLU
+- LeakyReLU
+- SeLU (refer to https://arxiv.org/abs/1706.02515)
+
+Loss functions are used in the same way to activations except that they take targets (targets are also Node objects).
+
+~~~python
+x = node.Node(np.random.randn(32, 2)) # Output (Batch x Class)
+y = node.Node(np.array([0, 1])) # Target (1-Of-K Encoded)
+z = x.softmax_with_binary_cross_entropy(y)
+~~~
+
+Basic loss functions are supported.
+
+- Binary cross entropy
+- Softmax with binary cross entropy
+- Mean squared error 
+
+Layers which are interpreted as a fixed set of basic operations can be used (layers are defined in node/layers.py).
+
+~~~python
+num_in_units = 2 # the number input units
+num_h_units = 3 # the number of hidden units
+
+layer = node.Linear(num_in_units, num_h_units)
+
+x = node.Node(np.random.randn(3, num_in_units))
+y = layer(x)
+
+print(y.value)
+>>> array([[ 0.72083557, -1.6690434 ,  0.36585453],
+>>>        [-2.0229297 ,  1.44547   , -2.1265292 ],
+>>>        [ 2.1440656 , -2.8574548 ,  1.8037455 ]], dtype=float32)
+~~~
+
+Basic layers are supported.
+
+- Linear (or also called Dense in other libraries)
+- Convolution / transposed convolution
+- Max pooling 
+- Batch normalization
+
+### Model Definition
+
+Model is defined in the below way.
 
 ~~~python
 class Classifier(node.Network):
@@ -54,55 +112,88 @@ class Classifier(node.Network):
                  num_in_units, 
                  num_h_units,
                  num_out_units):
-  
-        # 使用すレイヤーはself.layersリストに入れる
         self.layers = [
             node.Linear(num_in_units, num_h_units),
             node.Linear(num_h_units, num_out_units)
         ]
 
     def __call__(self, input):
-    
-        # フォワード計算を定義する。
         hidden = self.layers[0](input).tanh()
         output = self.layers[1](hidden)
 
         return output
 
 classifier = Classifier(10, 50, 10)
+
+x = node.Node(np.random.randn(1, 10))
+y = classifier(x)
 ~~~
 
-### オプティマイザーの定義
-
-オプティマイザーを定義するには最適化したいパラメーターのリストと学習率の値を渡す。
+**self.layers** property contains layers used in forward computation. 
 
 ~~~python
-optimizer = node.SGD(classifier.get_parameters(), 0.001)
+self.layers = [
+            node.Linear(num_in_units, num_h_units),
+            node.Linear(num_h_units, num_out_units)
+        ]
 ~~~
 
-### 損失関数
-
-損失関数は活性化関数と同じように使う。
+**\_\_call\_\_** method defines forward computation.
 
 ~~~python
-input = node.Node(np.random.randn(1, 10))
-target = node.Node(np.random.randn(1, 10))
-prediction = classifier(input)
-loss = prediction.softmax_with_binary_cross_entropy(target)
+def __call__(self, input):
+        hidden = self.layers[0](input).tanh()
+        output = self.layers[1](hidden)
+
+        return output
 ~~~
 
-### バックワード計算
-
-構築した計算グラフに対し、バックワード計算をしたい場合、変数のbackwardメソッドを呼ぶ。
+Parameters are accessed through **get_parameters** method of Network class defined in node/network.py. It returns a list of Node objects which contain parameters.
 
 ~~~python
-loss.backward()
+print(classifier.get_parameters())
+>>> [<node.node.Node at 0x10b8aeba8>,
+>>>  <node.node.Node at 0x10b8ae128>,
+>>>  <node.node.Node at 0x10b8aeb00>,
+>>>  <node.node.Node at 0x10b8aebe0>]
 ~~~
 
-### パラメーターのアップデート
+### Backward Computation
 
-バックワード計算で求めた勾配を使ってパラメータを更新したい場合、定義したオプティマイザーを呼ぶ。
+**node/node.py** module has the global variable named **GRAPH** which contains a sequence of pairs of Op objects used and Node objects operations are applied on. Back-propagation is processed by applying **backward** method of Op objects in **GRAPH** backward. After **backward**, gradients w.r.t. each Node objects are contained in **grad** property of Node objects.
 
 ~~~python
-optimizer.update()
+# At first GRAPH is an empty list.
+# GRAPH: 
+# []
+
+x = node.Node(np.random.randn(3, 3))
+y = node.Node(np.random.randn(3, 3))
+z = x + y
+
+# After add operation, a pair of Add Op object and Node object (for z).
+# GRAPH: 
+# [Pair(op=<node.op.Add object at 0x113b1d710>, node=<node.node.Node object at 0x113b1d4a8>)]
+
+out = z.sigmoid()
+
+# Another pair is added at the end of GRAPH
+# GRAPH:
+# [Pair(op=<node.op.Add object at 0x113b1d710>, node=<node.node.Node object at 0x113b1d4a8>), 
+#  Pair(op=<node.op.Sigmoid object at 0x113b36e10>, node=<node.node.Node object at 0x113b36860>)]
+
+out.backward()
+
+# After backward, GRAPH is flushed
+# GRAPH: 
+# []
+~~~
+
+### Update Parameters
+
+Gradients computed by backward computation are used to update parameters by optimizers in the following way (optimizers are defined in node/optimizer.py). **PARAMETER-LIST** is a list of Node objects which cantains parameters optimized. **LEARNING-RATE** is a scaler to control step size. **KWD** is other arguments which depend on the type of optimizers.
+
+~~~python
+# get_parameters method of Network object returns a list of parameters 
+optimizer = node.SGD(PARAMETER-LIST, LEARNING-RATE, *KWD)
 ~~~
