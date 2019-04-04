@@ -197,3 +197,9 @@ Gradients computed by backward computation are used to update parameters by opti
 # get_parameters method of Network object returns a list of parameters 
 optimizer = node.SGD(PARAMETER-LIST, LEARNING-RATE, *KWD)
 ~~~
+
+**update** method is used to update parameters.
+
+~~~python
+optimizer.update()
+~~~
