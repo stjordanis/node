@@ -66,7 +66,7 @@ Basic activations are supported (defined in node/op.py).
 Loss functions are used in the same way to activations except that they take targets (targets are also Node objects).
 
 ~~~python
-x = node.Node(np.random.randn(32, 2)) # Output (Batch x Class)
+x = node.Node(np.random.randn(1, 2)) # Output (Batch x Class)
 y = node.Node(np.array([0, 1])) # Target (1-Of-K Encoded)
 z = x.softmax_with_binary_cross_entropy(y)
 ~~~
