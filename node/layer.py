@@ -10,6 +10,12 @@ class Layer(object):
     def __init__(self):
         self.is_train = True
 
+    def train(self):
+        self.is_train = True
+
+    def test(self):
+        self.is_train = False
+
     def get_parameters(self):
         return list(self.parameters.values())
 

@@ -23,12 +23,12 @@ class SGD(Optimizer):
             decay:      重み減退率
         """
         self.parameters = parameters
-        self.learning_rate = learning_rate
+        self.eta = eta
         self.decay = decay
 
     def update(self):
         for i, parameter in enumerate(self.parameters):
-            delta = -self.learning_rate * parameter.grad
+            delta = -self.eta * parameter.grad
             if self.decay:
                 if parameter.name == "W":
                     delta = delta -self.eta * self.decay * (parameter.value)
@@ -47,7 +47,6 @@ class Adam(Optimizer):
                  beta_1 = 0.9,
                  beta_2 = 0.999,
                  eps = 1e-8):
-
         self.parameters = parameters
         self.eta        = eta
         self.decay      = decay
@@ -70,13 +69,15 @@ class Adam(Optimizer):
             self.v[i] = self.beta_2 * self.v[i] + (1 - self.beta_2) * (parameter.grad ** 2)
 
             # モーメントの移動平均を使って勾配のモーメントの期待値の近似値を計算する。
-            m_hat = self.m[i] / (1. - self.beta_1 ** self.iteration)
-            v_hat = self.v[i] / (1. - self.beta_2 ** self.iteration)
+            m_hat = self.m[i] / (1 - self.beta_1 ** self.iteration)
+            v_hat = self.v[i] / (1 - self.beta_2 ** self.iteration)
 
+            # Decay weights when self.decay is not 0
             delta = -self.eta * m_hat / (np.sqrt(v_hat) + self.eps)
             if self.decay:
                 if parameter.name == "W":
-                    delta = delta -self.eta * self.decay * (parameter.value)
+                    delta = delta - self.eta * self.decay * (parameter.value)
+
             self.parameters[i].update(delta)
 
     def clear(self):

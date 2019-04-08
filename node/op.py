@@ -385,15 +385,15 @@ class Sigmoid(Op):
 
     def __init__(self, x, *args):
         super(Sigmoid, self).__init__()
-        self.register(x, 32.5387)
+        self.register(x)
         self.output = self.forward()
 
     def forward(self):
-        x, alpha = self.cache
-        return 1 / (1 + np.exp(-np.clip(x.value, -alpha, alpha)))
+        x = self.cache[0]
+        return 1 / (1 + np.exp(-x.value))
 
     def backward(self, error):
-        x, _ = self.cache
+        x = self.cache[0]
         x.accumulate(error * self.output * (1 - self.output))
 
 
@@ -475,20 +475,24 @@ class BinaryCrossEntropy(Op):
 
     def __init__(self, x, y, *args):
         super(BinaryCrossEntropy, self).__init__()
-        self.register(x, y, 1e-5)
+        self.register(x, y, 1e-5, *args)
         self.output = self.forward()
 
     def forward(self):
-        x, y, alpha = self.cache
+        x, y, alpha, reduce = self.cache
         x.value = np.clip(x.value, alpha, 1-alpha)
         z = -y.value * np.log(x.value) -(1 - y.value) * np.log(1 - x.value)
-        return np.mean(z)
+        if reduce == "sum":
+            return np.sum(z)
+        else:
+            return np.mean(z)
 
     def backward(self, error):
-        x, y, _ = self.cache
-        shape = [1] * len(x.value.shape)
-        x.accumulate(np.tile(1, shape) / x.value.shape[0] \
-                    * (x.value - y.value) / (x.value * (1 - x.value)))
+        x, y, _, reduce = self.cache
+        if reduce == "sum":
+            x.accumulate((x.value - y.value) / (x.value * (1 - x.value)))
+        else:
+            x.accumulate((1 / x.value.shape[0]) * (x.value - y.value) / (x.value * (1 - x.value)))
 
 
 class SoftmaxWithBinaryCrossEntropy(Op):

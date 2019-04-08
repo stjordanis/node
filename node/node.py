@@ -5,7 +5,7 @@ except:
     import numpy as np
     DEVICE = "cpu"
 
-message = "Mode: {}".format(DEVICE.upper())
+message = "{} Mode".format(DEVICE.upper())
 print(message)
 
 import collections
@@ -326,8 +326,8 @@ class Node(object):
 
 
     @_two_oprand_op
-    def binary_cross_entropy(self, x):
-        return op.BinaryCrossEntropy(self, x)
+    def binary_cross_entropy(self, x, reduce="mean"):
+        return op.BinaryCrossEntropy(self, x, reduce)
 
     @_two_oprand_op
     def softmax_with_binary_cross_entropy(self, x):
